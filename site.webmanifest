@@ -1,0 +1,14 @@
+{
+    "name": "Grady's Portfolio",
+    "short_name": "Grady's Portfolio",
+    "icons": [
+        {
+            "src": "/android-chrome-192x192.png",
+            "sizes": "192x192",
+            "type": "image/png"
+        }
+    ],
+    "theme_color": "#000034",
+    "background_color": "#000034",
+    "display": "standalone"
+}
