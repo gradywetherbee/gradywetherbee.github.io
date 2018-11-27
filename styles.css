@@ -86,9 +86,9 @@ p{
 }
 
 .round-image{
-  margin-top:4rem;
   margin: 2rem;
   margin-bottom:1rem;
+  margin-left: 1rem;
   width:100px;
   height:100px;
   border-radius: 50%;
