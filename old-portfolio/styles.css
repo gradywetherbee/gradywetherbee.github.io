@@ -10,7 +10,7 @@ body {
 	width: 100vw;
 
     text-align: left;
-	background-image: url(https://gradywetherbee.github.io/images/beachSmall.jpg);
+	background-image: url(images/beachSmall.jpg);
     background-attachment: fixed;
     background-size: cover;
     background-position: center center;
@@ -19,13 +19,13 @@ body {
 	height:100vh;
 	width:auto;
 	font-size:5vh;
-	vertical-align:center; 
-	background-color:yellow; 
-	z-index:100; 
+	vertical-align:center;
+	background-color:yellow;
+	z-index:100;
 	padding:30vh 10vw;
 	top:0;
 	}
-	
+
 #header {
 	z-index:-10;
 	position:absolute;
@@ -118,28 +118,28 @@ ul {
 	}
 .homeProjDiv ul{
 	background-color:#007399;
-	
+
 	background-attachment: fixed;
   background-size: cover;
   background-position: center center;
 	top:300%;
 	}
 #homeProjImg {
-	background-image:url(https://gradywetherbee.github.io/images/homePageThumb.JPG);
+	background-image:url(images/homePageThumb.JPG);
 	}
 	.archDiv ul{
 	background-color:#401F68;
 	top:400%;
 }
 #isbe0 {
-	background-image:url(https://gradywetherbee.github.io/images/isbe-logo.jpg);
+	background-image:url(images/isbe-logo.jpg);
 	top:40%;
 	width:20%;
 	height:10%;
 	cursor:pointer;
 }
 #isbe1 {
-	background-image:url(https://gradywetherbee.github.io/images/nu-logo.png);
+	background-image:url(images/nu-logo.png);
 	top:46%;
 	left:52%;
 	width:38%;
@@ -151,14 +151,14 @@ ul {
 	top:500%;
 	}
 #SourceCodeImg0 {
-	background-image:url(https://gradywetherbee.github.io/images/source-code.jpg);
+	background-image:url(images/source-code.jpg);
 	left: 64%;
 	width:30%;
 	cursor:pointer;
 	}
 .fiveCreeksDiv ul{
 	background-color:#526839;
-	
+
 	background-attachment: fixed;
   background-size: cover;
   background-position: center center;
@@ -167,23 +167,23 @@ ul {
 #fiveCreeksImg0 {
 	width:20%;
 	left:70%;
-	background-image:url(https://gradywetherbee.github.io/images/fiveCreeks1Thumb.jpg);
+	background-image:url(images/fiveCreeks1Thumb.jpg);
 	}
 #fiveCreeksImg1 {
 	left:42%;
-	background-image:url(https://gradywetherbee.github.io/images/fiveCreeks2Thumb.jpg);
+	background-image:url(images/fiveCreeks2Thumb.jpg);
 	}
 .STBDiv ul{
 	background-color:#ED7417;
 	top:700%;
 	}
 #StbImg0 {
-	background-image:url(https://gradywetherbee.github.io/images/StbAd.jpg);
+	background-image:url(images/StbAd.jpg);
 	left: 46%;
 	width:30%;
 	}
 #StbImg1 {
-	background-image:url(https://gradywetherbee.github.io/images/StbLogo.jpg);
+	background-image:url(images/StbLogo.jpg);
 	top:35%;
 	left:51%;
 	width:35%;
@@ -227,7 +227,7 @@ ul {
 	}
 #fiveBlurb {
 	background-color:#02B838;
-	
+
 	opacity:0.95;
 	padding:2%;
 	padding-bottom:2.5%;
@@ -509,4 +509,3 @@ ul {
 		font-size:1rem;
 		}
 	}
-	
