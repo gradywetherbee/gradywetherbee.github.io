@@ -1,0 +1,40 @@
+body {
+	font-family: "Maven Pro", sans-serif;
+	font-size:1.7rem;
+	color: #fff;
+	margin:0;
+	padding:0;
+    text-align: left;
+	background-color:#000;
+	background-size: contain;
+	background-repeat:no-repeat;
+	background-position:center center;
+	background-image:url(https://gradywetherbee.github.io/images/StbAd.jpg);
+}
+#limter {
+	position:fixed;
+	height:0;
+	width:800px;
+	z-index:-999;
+}
+#container {
+	position:absolute;
+	top:100%;
+	left:0;
+	
+}
+#title {
+	width:96%;
+	padding:2%;
+	font-size:3rem;
+}
+#text {
+	padding:4rem;
+	background-color:#fff;
+	color:#000;
+	font-size:2rem;
+}
+img{
+	max-width:100%;
+	max-height:100%;
+}

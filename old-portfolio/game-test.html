@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <link href="https://fonts.googleapis.com/css?family=Nunito" rel="stylesheet">
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<style>
+html, body {
+      box-sizing: border-box;
+      width: 100%;
+      height: 100%;
+      margin: 0px;
+      padding:0px;
+      border: 0;
+      overflow: hidden;
+      display: block;
+      -webkit-tap-highlight:none;
+      user-select: none;
+      font-family: nunito, sans-serif;
+    }
+
+    #Xcontainer {
+      z-index: 2;
+      padding:0px 0px;
+      margin:0;
+      width:auto;
+      height:auto;
+      display: inline;
+      -webkit-tap-highlight:none;
+      user-select: none;
+      border-radius:  40px;
+    }
+
+    .whiteBackground{
+      background:white;
+    }
+    .square{
+      zoom: 0.6;
+      position:relative;
+      top: 50%;
+      transform: translateY(-50%);
+      padding: 0;
+      margin:0;
+      width:100px;
+      height:100px;
+      display: inline;
+      -webkit-tap-highlight:none;
+      user-select: none;
+      border-radius: 100%;
+      background: white;
+
+    }
+    .square:hover{
+      cursor:pointer;
+      -webkit-tap-highlight:none;
+      user-select: none;
+    }
+    .line {
+      display:block;
+      background: linear-gradient(to right, #9D07AD, #0966E8);
+      margin:13px 0;
+      height:15px;
+      width:100px;
+      border-radius:10px;
+      display:block;
+      will-change: margin;
+      transition: all 0.5s ease-in-out;
+      -webkit-tap-highlight:none;
+      user-select: none;
+    }
+    .a3-line1-close {
+      transform: rotate(-45deg) translateY(20px) translateX(2px) scaleX(0.5) scale(0.9);
+    }
+    .a3-line3-close {
+      transform: translateX(-3px) rotate(-45deg) translateY(-18px)  scaleX(0.5) scale(0.9);
+    }
+    .a3-line2-close {
+      border-radius:5px;
+      transform: rotate(45deg) translateY(0px) translateX(0px) scale(0.9);
+    }
+
+canvas {
+    background: linear-gradient(141deg, #48F4F7, #F89FFC);
+    cursor:crosshair;
+    z-index: 1;
+}
+
+.plain{
+  margin-top:8px;
+  padding:0;
+  z-index: 0;
+}
+
+#info {
+  height:78px;
+  width:auto;
+  display:flex;
+  flex-direction: row;
+  position:absolute;
+  padding:10px 10px;
+  bottom:0;
+  right:0;
+  box-sizing: border-box;
+
+  justify-content: flex-end;
+}
+
+h2{
+  border:1px solid black;
+  border-radius:30px;
+  padding:9px 20px;
+  margin:0 5px;
+  color:black;
+  display: inline;
+}
+
+#menu{
+  height: 100vh;
+  width:100vw;
+  position: absolute;
+  top:0;
+  left:0;
+  display: normal;
+  background: linear-gradient(141deg, #0966E8, #9D07AD);
+}
+
+#menu h2{
+  cursor:pointer;
+  border:none;
+  color:black;
+  width: fit-content;
+  display:block;
+  padding:10px 21px;
+  margin: 8px auto;
+  background:white;
+  transition-timing-function: ease;
+    transition-duration: 2s;
+}
+
+#menu h2:hover{
+  box-shadow: 2px 1px 20px;
+  transition-duration: 0.2s;
+}
+
+#menu h2:active{
+  background: blue;
+  transition-timing-function: ease;
+  transition-duration: 1s;
+}
+
+.hide-menu{
+  z-index: -1;
+}
+
+@keyframes fade-in {
+    from {opacity:0;}
+    to {opacity:1;}
+}
+
+.show-menu{
+  animation-name: fade-in;
+  animation-duration: 1s;
+  animation-fill-mode: forwards;
+  z-index: 1;
+}
+
+.bottom-up {
+  padding:80px 0px;
+  box-sizing: border-box;
+  height: 100vh;
+  display: flex;
+  justify-content: space-around;
+  flex-direction: column;
+
+}
+
+</style>
+</head>
+
+<body onload="startGame()">
+  <div id="canvasDiv">
+    <canvas id="canvas" width="640" height="260"></canvas>
+  </div>
+  <div id="info">
+    <!--
+    <div class="plain">
+      <h2 id="scoreboard">Score:0</h2>
+      <h2 id="focus">Focus</h2>
+    </div>
+  -->
+    <div id="Xcontainer">
+      <div id="a3-menu" class="square">
+        <div id="a3-line1" class="line"></div>
+        <div id="a3-line2" class="line"></div>
+        <div id="a3-line3" class="line"></div>
+      </div>
+    </div>
+  </div>
+  <div id="menu" class="hide-menu">
+    <div class="bottom-up hide-menu">
+      <div class="plain">
+      <h2 id="scoreboard" class="button-not-pressed">Score:0</h2>
+      <h2 id="calibrate-button" class="button-not-pressed" onclick="calibrateGyroscope()">Calibrate Gyroscope</h2>
+      <h2 id="restart-button" class="button-not-pressed" onclick="restartGame()">Restart</h2>
+      </div>
+      <h2 id="focus" class="button-not-pressed">Focus</h2>
+    </div>
+  </div>
+
+  <script
+    src="https://code.jquery.com/jquery-3.3.1.slim.js"
+    integrity="sha256-fNXJFIlca05BIO2Y5zh1xrShK3ME+/lYZ0j+ChxX2DA="
+    crossorigin="anonymous"></script>
+
+<script>
+var mobile = true;
+if (!/Mobi|Android/i.test(navigator.userAgent) || /iPad/i.test(navigator.userAgent)) {
+       //not mobile!
+       mobile = false;
+       var info =  document.getElementById('info');
+       info.style.top = 0;
+   }
+
+var myGamePiece;
+var myObstacles = [];
+var myBullets = [];
+var myCannons = [];
+var myScore;
+var scoreboard = document.getElementById("scoreboard");
+var focusButton = document.getElementById("focus");
+var m = Math;
+var mouseX;
+var mouseY;
+var pause = false;
+
+
+
+$('#a3-menu').click(function(){
+  pause = !pause;
+  $("#Xcontainer").toggleClass("whiteBackground");
+  $("#menu").toggleClass("show-menu");
+  $("#menu").toggleClass("hide-menu");
+  $(".bottom-up").toggleClass("show-menu");
+  $(".bottom-up").toggleClass("hide-menu");
+  $("#a3-line1").toggleClass("a3-line1-close");
+  $("#a3-line2").toggleClass("a3-line2-close");
+  $("#a3-line3").toggleClass("a3-line3-close");
+});
+
+/*
+document.getElementById('#a3-menu').click(function(){
+  pause = !pause;
+  $("#Xcontainer").toggleClass("whiteBackground");
+  $("#menu").toggleClass("show-menu");
+  $("#menu").toggleClass("hide-menu");
+  $(".bottom-up").toggleClass("show-menu");
+  $(".bottom-up").toggleClass("hide-menu");
+  $("#a3-line1").toggleClass("a3-line1-close");
+  $("#a3-line2").toggleClass("a3-line2-close");
+  $("#a3-line3").toggleClass("a3-line3-close");
+});
+*/
+
+function startGame() {
+    resizeCanvas();
+    myGamePiece = new component(6, 6, "black", 150, 150, "player");
+    myCannons.focus = true;
+    myCannons.push(new component(4,4, "black", 230, 200, "cannon", 1));
+    myCannons.push(new component(4,4, "black", 230, 500, "cannon", 1));
+    myGamePiece.gravity = 0.05;
+    myGamePiece.damage = 2;
+    myScore = 0;
+    myGameArea.start();
+}
+
+var myGameArea = {
+    canvas : document.getElementById("canvas"),
+    start : function() {
+        this.canvas.width = window.innerWidth;
+        this.canvas.height = window.innerHeight;
+        this.context = this.canvas.getContext("2d");
+        this.frameNo = 0;
+        this.interval = setInterval(updateGameArea, 20);
+        window.addEventListener('resize', resizeCanvas, false);
+          resizeCanvas();
+        this.canvas.addEventListener('mousemove', function (e) {
+            mouseX=e.x;
+            mouseY=e.y;
+        })
+        window.addEventListener("deviceorientation", deviceOrientationListener, true);
+        this.canvas.addEventListener('click', function (e) {
+          myGamePiece.fireBullet();
+        })
+        focusButton.addEventListener('click', function (e) {
+          changeCannonFocus();
+        })
+        window.addEventListener('keydown', function (e) {
+          if(e.keyCode == 87){
+            if(mobile)
+              myGamePiece.speedY -= 3;
+            else
+              accelerate(-0.3);
+          }
+          if(e.keyCode == 83){
+            if(mobile)
+              myGamePiece.speedY += 3;
+            else
+              accelerate(0.3);
+          }
+          if(e.keyCode == 70)
+            changeCannonFocus();
+          if(e.keyCode == 65)
+            myGamePiece.speedX -= 4;
+          if(e.keyCode == 68)
+            myGamePiece.speedX += 4;
+        })
+        window.addEventListener('keyup', function (e) {
+            if(e.keyCode == 87 && !mobile){
+              if(mobile)
+                accelerate(0);
+              else
+                accelerate(0.05);
+            }
+        })
+        },
+    clear : function() {
+        this.context.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    }
+}
+
+function component(width, height, color, x, y, type, damage) {
+    this.type = type;
+    this.score = 0;
+    this.damage = damage;
+    this.width = width;
+    this.height = height;
+    this.speedX = 0;
+    this.speedY = 0;
+    this.x = x;
+    this.y = y;
+    this.gravity = 0;
+    this.gravitySpeed = 0;
+    this.update = function() {
+        ctx = myGameArea.context;
+        ctx.save();
+        ctx.translate(this.x, this.y);
+        //ctx.rotate(this.angle);
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(0,0,this.width,0,2*Math.PI);
+        if(type == "player" || type == "cannon")
+          ctx.fill();
+        else{
+          ctx.strokeStyle = color;
+          ctx.stroke();
+        }
+        //ctx.fillRect(this.width / -2, this.height / -2, this.width, this.height);
+        ctx.restore();
+    }
+
+    this.attackPlayer = function(player, attacker) {
+        var direction = m.atan2(player.y-attacker.y,player.x-attacker.x);
+        attacker.angle = direction;
+        var magnitude = 1;
+        attacker.x += magnitude*m.cos(direction);
+        attacker.y += magnitude*m.sin(direction);
+        attacker.update();
+    }
+
+    this.fireBullet = function(target) {
+      var b = new component(this.damage, 1, "black", this.x, this.y, "bullet", this.damage);
+      if(type == "player") {
+        b.angle = m.atan2(this.y-mouseY,this.x-mouseX) -0.1 + (m.random() * 0.2);
+      }
+      else if(myObstacles.length > 0){
+        b.angle = m.atan2(this.y-target.y,this.x-(target.x)) -0.1 + (m.random() * 0.2);
+      }
+      var magnitude = 8;
+      b.gravity = 0.05;
+      b.speedX = -magnitude*m.cos(b.angle);
+      b.speedY = -magnitude*m.sin(b.angle);
+      myBullets.push(b);
+    }
+
+    this.updateBullet = function(){
+      // this.gravitySpeed += this.gravity;
+      this.x += this.speedX;
+      this.y += this.speedY + this.gravitySpeed;
+      this.update();
+    }
+
+    this.newPos = function() {
+        if(!mobile)
+        this.gravitySpeed += this.gravity;
+        this.x += this.speedX;
+        this.speedX /= 1.02;
+        this.speedY /= 1.02;
+        this.y += this.speedY + this.gravitySpeed;
+        this.hitBottom();
+    }
+    this.hitBottom = function() {
+        if (this.y + myGamePiece.height > myGameArea.canvas.height) {
+            this.y = myGameArea.canvas.height - myGamePiece.height;
+            if(mobile)
+            this.speedY = this.speedY*-0.5;
+            else
+            this.gravitySpeed = this.gravitySpeed*-0.5;
+        }
+        if (this.y - myGamePiece.height < 0) {
+            this.y = myGamePiece.width;
+            if(mobile)
+            this.speedY = this.speedY*-0.5;
+            else
+            this.gravitySpeed = this.gravitySpeed*-1;
+        }
+        if (this.x - myGamePiece.width < 0) {
+            this.x = myGamePiece.width;
+            this.speedX = this.speedX*-0.5;
+        }
+        if (this.x - myGamePiece.width > canvas.width) {
+            this.x = canvas.width - myGamePiece.width;
+            this.speedX = this.speedX*-0.5;
+        }
+    }
+    this.crashWith = function(otherobj) {
+        // var myleft = this.x + (this.width/-2);
+        // var myright = this.x + (this.width)/2;
+        // var mytop = this.y + (this.height/-2);
+        // var mybottom = this.y + (this.height/2);
+        // var otherleft = otherobj.x + (otherobj.width/-2);
+        // var otherright = otherobj.x + (otherobj.width/2);
+        // var othertop = otherobj.y + (otherobj.height/-2);
+        // var otherbottom = otherobj.y + (otherobj.height/2);
+        // var crash = true;
+        // if ((mybottom < othertop) || (mytop > otherbottom) || (myright < otherleft) || (myleft > otherright)) {
+        //     crash = false;
+        // }
+        // return crash;
+
+        return ( //for circle collisions
+          m.pow((this.x-otherobj.x),2) + m.pow((this.y-otherobj.y),2)
+          < m.pow((this.width + otherobj.width),2)
+        )
+
+
+    }
+}
+
+function restartGame(){
+  location = location
+}
+
+function updateGameArea() {
+    var x, height, gap, minHeight, maxHeight, minGap, maxGap;
+    for (i = 0; i < myObstacles.length; i ++) {
+      for(j = 0; j < myBullets.length; j ++){
+        //check for collisions between bullets and enemies
+        if (myBullets[j].crashWith(myObstacles[i])) {
+          var damage = myBullets[j].damage;
+          myBullets[j] = myBullets[myBullets.length-1];
+          myBullets.pop();
+          myScore ++;
+          myObstacles[i].width -= damage;
+          if(myObstacles[i].width < 5){
+            myObstacles[i] = myObstacles[myObstacles.length-1]
+            myObstacles.pop();
+          }
+        }
+      }
+        if (myGamePiece.crashWith(myObstacles[i])) {
+            window.removeEventListener("deviceorientation", deviceOrientationListener, true);
+            return;
+        }
+    }
+    if(!pause){
+      myGameArea.clear();
+      myGameArea.frameNo += 1;
+          if (everyinterval(20)){
+            if(myCannons.focus){
+              var minIndex = 0;
+              //find obstacle farthest left on canvas
+              for(i = 1; i < myObstacles.length; i++){
+                if(myObstacles[i].x < myObstacles[minIndex].x){
+                  minIndex = i;
+                }
+              }
+              //target it
+              for(i = 0; i < myCannons.length; i++){
+                myCannons[i].fireBullet(myObstacles[minIndex]);
+              }
+            } else {
+              //target separate obstacles
+              for(i = 0; i < myCannons.length; i++){
+                myCannons[i].fireBullet(myObstacles[i%myObstacles.length]);
+              }
+            }
+
+          }
+      if(myGameArea.frameNo == 1)
+        calibrateGyroscope();
+      if (myGameArea.frameNo == 1 || everyinterval(20)) {
+          x = myGameArea.canvas.width;
+          var size = m.random()*10+5;
+          myObstacles.push(new component(size, size, "rgb(" + m.random()*255+1 + ", "+ m.random()*25+1 + ", "+ m.random()*255+1 + ")", x,  m.random()*myGameArea.canvas.height+1));
+      }
+      for (i = 0; i < myObstacles.length; i += 1) {
+          myObstacles[i].attackPlayer(myGamePiece, myObstacles[i]);
+      }
+      for (i = 0; i < myBullets.length; i += 1) {
+          myBullets[i].updateBullet();
+      }
+      for (i = 0; i < myCannons.length; i += 1) {
+          myCannons[i].update();
+      }
+      scoreboard.innerHTML = "Score: " + myScore;
+      myGamePiece.newPos();
+      myGamePiece.update();
+    }
+
+}
+
+function changeCannonFocus(){
+  myCannons.focus = !myCannons.focus;
+  if(myCannons.focus)
+    focusButton.innerHTML = "Focus";
+  else
+    focusButton.innerHTML = "Split";
+}
+
+function everyinterval(n) {
+    if ((myGameArea.frameNo / n) % 1 == 0) {return true;}
+    return false;
+}
+
+function accelerate(n) {
+    myGamePiece.gravity = n;
+}
+
+var beta = 0;
+var newBeta = 0;
+var gamma = 0;
+var newGamma = 0;
+
+var calButton = document.getElementById('calibrate-button');
+function calibrateGyroscope() {
+  beta = newBeta;
+  gamma = newGamma;
+}
+
+function deviceOrientationListener(event) {
+  newBeta = Math.round(event.beta);
+  newGamma =  Math.round(event.gamma);
+  myGamePiece.y += (newBeta-beta)*1;
+  myGamePiece.x += (newGamma-gamma)*0.4;
+}
+
+function resizeCanvas() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+}
+
+</script>
+
+</body>
+</html>

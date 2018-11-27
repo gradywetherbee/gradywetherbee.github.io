@@ -1,0 +1,158 @@
+		body {
+			text-align: center;
+			font-family: 'Dancing Script', cursive;
+			font-weight:lighter;
+			color:white;
+			display:block;
+			background-image:url(/images/goldenGate.jpg);
+			background-attachment:fixed;
+			background-size:cover;
+			background-position:center;
+			background-color:maroon;
+		}
+		h1 {
+			display:block;
+			font-size:500%;
+			letter-spacing:0.1em;
+			color:white;
+		}
+
+	
+		#menu ul{
+			position:relative;
+			padding:0%;
+			margin:0 auto;
+			list-style-type:none; 
+			
+		}
+
+		#menu ul li {
+		    opacity:0.8;
+			display:inline;
+			margin:2%;
+			padding:5% 10%;
+			border-radius:0.4em;
+			background-color:#000;
+			background-repeat:no-repeat;
+			background-position:center;
+		}
+		
+		hr {
+			margin-top:-2rem;
+			height: 10px;
+			border: 0;
+			width: 40%;
+			box-shadow: 0 13px 5px -10px #fff inset;
+			border-radius:0.2em;
+			margin-bottom:0%;
+		}
+		
+		@media(max-width:1000px) {
+		#menu ul li {
+		    opacity:0.8;
+			display:inline;
+			margin:3% 1%;
+			padding:6% 12%;
+			border-radius:0.4em;
+			background-color:#fff;
+			background-repeat:no-repeat;
+			background-position:center;
+		}
+		hr {
+			height: 10px;
+			border: 0;
+			width: 40%;
+			box-shadow: 0 13px 5px -10px #fff inset;
+			border-radius:0.2em;
+			margin-bottom:38%;
+		}
+		}
+		@media(min-width:1001px) {
+		#menu ul li {
+		    opacity:0.8;
+			display:inline;
+			margin:2%;
+			padding:5% 10%;
+			border-radius:0.4em;
+			background-color:#fff;
+			background-repeat:no-repeat;
+			background-position:center;
+		}
+		hr {
+			height: 10px;
+			border: 0;
+			width: 30%;
+			box-shadow: 0 13px 5px -10px #fff inset;
+			border-radius:0.2em;
+			margin-bottom:20%;
+		}
+		}
+		@media(min-width:1501px) {
+		#menu ul li {
+		    opacity:0.8;
+			display:inline;
+			margin:2%;
+			padding:5% 10%;
+			border-radius:0.4em;
+			background-color:#fff;
+			background-repeat:no-repeat;
+			background-position:center;
+		}
+		hr {
+			height: 10px;
+			border: 0;
+			width: 30%;
+			box-shadow: 0 13px 5px -10px #fff inset;
+			border-radius:0.2em;
+			margin-bottom:16%;
+		}
+		}
+		
+		#menu ul li:hover
+		{
+			opacity:1;
+			
+		}
+		#spotify{ 
+			background-image:url(https://upload.wikimedia.org/wikipedia/commons/thumb/2/26/Spotify_logo_with_text.svg/500px-Spotify_logo_with_text.svg.png); 
+			background-size:80%;
+		}
+		#spotify:hover {
+			background-size:83%;
+		}
+		#drive {
+			background-image:url(http://cdn.downdetector.com/static/uploads/c/300/667b6/google_drive_logo_3963_15.png);
+			background-size:55%;
+		}
+		#drive:hover {
+			background-size:57%;
+		}
+		#gmail {
+			background-image:url(https://image.flaticon.com/icons/png/512/281/281769.png);
+			background-size:34%;
+		}
+		#gmail:hover {
+			background-size:36%;
+		}
+		#soundcloud {
+			background-image:url(http://thesource.com/wp-content/uploads/2014/07/soundcloud-logo-3.png); 
+			background-size:80%;
+		}
+		#soundcloud:hover {
+			background-size:83%;
+		}
+		#messenger {
+			background-image:url(http://www.trecebits.com/wp-content/uploads/2015/05/Facebook-messenger-portada.png);
+			background-size:140%;
+
+		}
+		#messenger:hover {
+			background-size:145%;
+		}
+		#wunderlist {
+			background-image:url(http://gdurl.com/a0Cb);
+			background-size:100%;
+		}
+		#wunderlist:hover {
+			background-size:104%;
+		}

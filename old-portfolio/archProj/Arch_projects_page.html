@@ -1,0 +1,97 @@
+<!DOCTYPE HTML>
+
+<html>
+
+<head>
+	<meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+	<title>Arch Projects</title>
+</head>
+
+<body>
+
+	<header>
+	<img id="isbe_box" src="http://s3.amazonaws.com/advancedcms/AJqB8YFTayQNa0wf48qg_03f106apng">
+	</header>
+
+<div class="tab" onLoad="reset(event)">
+  <button class="tablinks" onclick="openTime(event, 'Present Projects')">Present Projects</button>
+  <button class="tablinks" onclick="openTime(event, 'Past Projects')">Past Projects</button>
+</div>
+
+<div id="Present Projects" class="tabcontent">
+	<h3>Present Projects</h3>
+	<ul>
+		<ul>
+			<img src="https://thumbs.dreamstime.com/t/style-cartoon-night-city-skyline-background-illustrator-eps-67676592.jpg">
+			<li>Current Project 1</li>
+		</ul>
+		<ul>
+			<img src="https://thumbs.dreamstime.com/t/style-cartoon-night-city-skyline-background-illustrator-eps-67676592.jpg">
+			<li>Current Project 2</li>
+		</ul>
+		<ul>
+			<img src="https://thumbs.dreamstime.com/t/style-cartoon-night-city-skyline-background-illustrator-eps-67676592.jpg">
+			<li>Current Project 3</li>
+		</ul>
+	</ul>
+</div>
+
+<div id="Past Projects" class="tabcontent" style="display:none;">
+  <h3>Past Projects</h3>
+  <ul>
+		<ul>
+			<img src="https://upload.wikimedia.org/wikipedia/commons/thumb/b/bc/Temple_Square%2C_Salt_Lake_City%2C_1899_retouched.jpg/120px-Temple_Square%2C_Salt_Lake_City%2C_1899_retouched.jpg">
+			<li>Past Project 1</li>
+		</ul>
+		<ul>
+			<img src="https://upload.wikimedia.org/wikipedia/commons/thumb/b/bc/Temple_Square%2C_Salt_Lake_City%2C_1899_retouched.jpg/120px-Temple_Square%2C_Salt_Lake_City%2C_1899_retouched.jpg">
+			<li>Past Project 2</li>
+		</ul>
+		<ul>
+			<img src="https://upload.wikimedia.org/wikipedia/commons/thumb/b/bc/Temple_Square%2C_Salt_Lake_City%2C_1899_retouched.jpg/120px-Temple_Square%2C_Salt_Lake_City%2C_1899_retouched.jpg">
+			<li>Past Project 3</li>
+		</ul>
+	</ul>
+</div>
+
+<script>
+function openTime(evt, timeName) {
+    var i, tabcontent, tablinks;
+    tabcontent = document.getElementsByClassName("tabcontent");
+    for (i = 0; i < tabcontent.length; i++) {
+        tabcontent[i].style.display = "none";
+    }
+    tablinks = document.getElementsByClassName("tablinks");
+    for (i = 0; i < tablinks.length; i++) {
+        tablinks[i].className = tablinks[i].className.replace(" active", "");
+    }
+    document.getElementById(timeName).style.display = "block";
+    evt.currentTarget.className += " active";
+}
+</script>
+
+	<!--
+		<ul>
+			<ul id="Brew Bike">
+				<h3>Brew Bike</h3>
+				<li>thing 1</li>
+				<li>thing 2</li>
+				<li>thing 3</li>
+			</ul>
+			<ul id="Analytics Website">
+				<h3>Analytics Website</h3>
+				<li>thing 1</li>
+				<li>thing 2</li>
+				<li>thing 3</li>
+			</ul>
+		</ul>	
+	</div>
+	-->
+
+	<footer>
+		<a href="mailto:someone@example.com?Subject=Hello">Contact Arch</a>
+	</footer>
+
+</body>
+
+</html>
