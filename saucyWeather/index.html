@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en" >
+
+<head>
+  <meta charset="UTF-8" name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <!-- Chrome, Firefox OS and Opera -->
+    <meta name="theme-color" content="#000000">
+    <meta name="mobile-web-app-capable" content="yes">
+    <!-- iOS Safari -->
+    <meta name="meta-apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="meta-apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>saucyWeather</title>
+    <link href="https://fonts.googleapis.com/css?family=Quicksand:400,500,700" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+
+<body>
+<div id="background"></div>
+  <div class="container">
+  <div class="cover"><!--Activate location services <br> (Not stored or shared)--></div>
+	<h2 id="city"></h2>
+  <div class="row">
+  	<div class="col-6">
+  		<div class="degrees slide-down">
+  			<h1 id="currentTemp" class="changeUnitListener"></h1>
+  			<span class="unit changeUnitListener large"></span>
+  		</div>
+  		<strong id="sauce"></strong>
+  	</div>
+  <div id="background2"></div>
+  <div class="pad-top">
+    <div class="col-3">
+      <div class="fifth-height">
+        <h3 id="1hrs" class=" small forecastTime"></h3>
+        <div class="smallDegrees">
+           <h3 id="1hrsForecastTemp" class="changeUnitListener"></h3>
+           <span class="unit changeUnitListener small"></span>
+        </div>
+      </div>
+    </div>
+    <div class="col-3">
+  		<div class="fifth-height">
+        <h3 id="3hrs" class=" small forecastTime"></h3>
+        <div class="smallDegrees">
+  			   <h3 id="3hrsForecastTemp" class="changeUnitListener"></h3>
+  			   <span class="unit changeUnitListener small"></span>
+        </div>
+  		</div>
+  	</div>
+    <div class="col-3">
+      <div class="fifth-height">
+        <h3 id="6hrs" class=" small forecastTime"></h3>
+        <div class="smallDegrees">
+           <h3 id="6hrsForecastTemp" class="changeUnitListener"></h3>
+           <span class="unit changeUnitListener small"></span>
+        </div>
+      </div>
+    </div>
+    <div class="col-3">
+  		<div class="fifth-height">
+        <h3 id="24hrs" class=" small forecastTime"></h3>
+        <div class="smallDegrees">
+  			   <h3 id="24hrsForecastTemp" class="changeUnitListener"></h3>
+  			   <span class="unit changeUnitListener small"></span>
+        </div>
+  		</div>
+  	 </div>
+    </div>
+  </div>
+
+</div>
+    <script src='https://cdnjs.cloudflare.com/ajax/libs/jquery/3.2.1/jquery.min.js'></script>
+    <script  src="js/index.js"></script>
+</body>
+
+</html>
