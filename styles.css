@@ -7,7 +7,7 @@
   color:transparent;
 }
 .shadow:hover{
-  box-shadow: 0 0.75rem 1.25rem -0.25rem gray;
+  box-shadow: 0 0.75rem 1.25rem -0.25rem #333;
 }
 
 h1,h2{
@@ -72,17 +72,24 @@ p{
 }
 
 .s-2{
+    /* background:#f1f1f1; gray from Z-Stream box*/
+    /* background: linear-gradient(to bottom, #f1f1f1 60%,gray); */
     background: #e0f6ff;
+
 }
 
 .s-3{
-    background: #fff;
+    background: white;
+
+    padding-bottom:2rem;
 }
 
 .s-4{
     background-image:url('assets/img/grady-sunlight.JPG');
+    /* background-attachment: fixed; */
     background-position: center;
     background-size: cover;
+    /* min-height: 80vh; */
 }
 
 .round-image{
@@ -92,6 +99,7 @@ p{
   width:100px;
   height:100px;
   border-radius: 50%;
+  /* border:2px solid gold; */
 }
 
 .c6-img{
@@ -106,17 +114,17 @@ p{
 .shadow-right{
   border-bottom:-2rem solid white;
   border-top:-2rem solid white;
-  box-shadow: 0.75rem 0 1.25rem -1rem gray;
+  box-shadow: 0.75rem 0 1.25rem -1rem #333;
 }
 .shadow-left{
   border-bottom:-2rem solid white;
   border-top:-2rem solid white;
-  box-shadow: -0.75rem 0 1.25rem -1rem gray;
+  box-shadow: -0.75rem 0 1.25rem -1rem #333;
 }
 .shadow-top{
   border-left:-4rem solid white;
   border-right:-4rem solid white;
-  box-shadow: 0 -1rem 4rem -1.5rem gray;
+  box-shadow: 0 -1rem 4rem -1.5rem #333;
 }
 
 .shadow:hover .c6-img{
@@ -137,11 +145,12 @@ p{
 .circle{
   position:absolute;
   z-index: -999;
-  opacity:0.6;
+  opacity:1;
   pointer-events: none;
 }
 
 .c1{
+  opacity:0.7;
   width: 20rem;
   padding-top: 20rem;
   border-radius: 50%;
@@ -149,6 +158,11 @@ p{
   top:45rem;
   right:-5rem;
 }
+
+/* .c2{
+  top:34rem;
+  left:-6rem;
+} */
 
 .contact-form{
   webkit-tap-highlight: none;
@@ -229,6 +243,17 @@ p{
       top:-20%;
       right:-35vw;
     }
+
+    /* .c2{
+      opacity:0.7;
+      z-index: -10;
+      width: 15rem;
+      padding-top: 15rem;
+      border-radius: 50%;
+      background:#E8DB2A;
+      top:40rem;
+      left:-4rem;
+    } */
 
 
     .arrow-circle{
