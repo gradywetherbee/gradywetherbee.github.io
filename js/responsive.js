@@ -14,7 +14,7 @@ function layoutcss(){
             for (var i = 0; i < navLinks.length; i++) {
               navLinks[i].classList.add('mobile-nav-link');
             }
-            //navList.innerHTML += ".mobile-nav";
+            // navList.innerHTML += ".mobile-nav";
         }
         catch(e){
             console.log(mobileNavButton);

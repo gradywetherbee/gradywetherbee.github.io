@@ -222,6 +222,21 @@ p{
   transition: all 0.5s ease-in-out;
 }
 
+.space-between-horiz{
+  width:100%;
+  justify-content:space-between;
+  display: flex;
+  flex-direction: row;
+}
+
+#a3-menu{
+  z-index: 1;
+  opacity:1;
+  background: white;
+  border-radius:3rem;
+  box-shadow: 1rem 1rem 4rem 3.5rem white;
+}
+
 .a3-line1-close {
   transform: rotate(-45deg) translateY(20px) translateX(2px) scaleX(0.5) scale(0.9);
 }
