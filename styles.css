@@ -1,4 +1,8 @@
 
+html{
+  -webkit-tap-highlight-color: rgba(0,0,0,0);
+-webkit-tap-highlight-color: transparent;
+}
 .shadow{
   transition: .2s box-shadow ease-out;
   cursor:pointer;
@@ -15,7 +19,8 @@ h1,h2{
   box-sizing: border-box;
   font-family: Arvo;
   color:#00284d;
-  font-weight: 400;
+  font-weight: 700;
+  font-size: 1.2rem;
   z-index: 1;
   border-bottom: 2px solid transparent;
   transition:all 0.6s ease-out;
@@ -188,6 +193,13 @@ p{
 .contact-submit:hover{
   color: #eeeeee;
   cursor: pointer;
+}
+
+input:focus,
+select:focus,
+textarea:focus,
+button:focus {
+outline: none;
 }
 
 /*Mobile menu hamburger styles*/
