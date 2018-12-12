@@ -5,7 +5,7 @@ function layoutcss(){
     var mobileNavButton = document.getElementsByClassName("mobile-nav-button")[0];
     var navList = document.getElementsByClassName("nav-list")[0];
     var navLinks = document.getElementsByClassName("nav-link");
-    if(/iPhone|iphone|blackberry|webos|windows phone|iPad|iPod|Android/i.test(navigator.userAgent) || window.innerWidth <= 600){
+    //if(/iPhone|iphone|blackberry|webos|windows phone|iPad|iPod|Android/i.test(navigator.userAgent) || window.innerWidth <= 600){
         try{
             mobileNavButton.style.display = "inherit";
             mobileNavButton.addEventListener("click", showHideMobileNavList);
@@ -19,22 +19,22 @@ function layoutcss(){
         catch(e){
             console.log(mobileNavButton);
             console.log(navLinks);
-            alert(e);
+            //alert(e);
         }
-    }
-    else{
-        try{
-            mobileNavButton.style.display = "none";
-            navList.classList.remove('mobile-nav');
-            navList.classList.remove("hide");
-            for (var i = 0; i < navLinks.length; i++) {
-              navLinks[i].classList.remove('mobile-nav-link');
-            }
-        }
-        catch(e){
-            alert(e + " 2");
-        }
-    }
+    //}
+    // else{
+    //     try{
+    //         mobileNavButton.style.display = "none";
+    //         navList.classList.remove('mobile-nav');
+    //         navList.classList.remove("hide");
+    //         for (var i = 0; i < navLinks.length; i++) {
+    //           navLinks[i].classList.remove('mobile-nav-link');
+    //         }
+    //     }
+    //     catch(e){
+    //         alert(e + " 2");
+    //     }
+    // }
 }
 
 function showHideMobileNavList(){

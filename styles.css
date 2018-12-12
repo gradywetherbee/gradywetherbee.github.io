@@ -1,5 +1,6 @@
 
 html{
+  -webkit-overflow-scrolling:touch;
   -webkit-tap-highlight-color: rgba(0,0,0,0);
 -webkit-tap-highlight-color: transparent;
 }
@@ -13,6 +14,44 @@ html{
 .shadow:hover{
   box-shadow: 0 0.75rem 1.25rem -0.25rem #333;
 }
+
+.long-line{
+  top:-4vw;
+  z-index: -1;
+  left:-22.4vw;
+  position: absolute;
+  width:100vw;
+  -ms-transform: rotate(-45deg); /* IE 9 */
+  -webkit-transform: rotate(-45deg); /* Safari 3-8 */
+  transform: rotate(-45deg);
+
+}
+
+.ll-1{
+  height:3px;
+  margin-top:calc(2rem - 2px);
+  background:#DDDD00;
+}
+
+.ll-2{
+  height:1px;
+  margin-top:1rem;
+  background:#DDDD00;
+}
+
+.ll-3{
+  height:1px;
+  margin-top:5rem;
+  background:#DDDD00;
+}
+
+.ll-4{
+  height:1px;
+  margin-top:3rem;
+  background:#DDDD00;
+  /* #FFDD00; */
+}
+
 
 h1,h2{
   margin-right: auto;
@@ -155,6 +194,7 @@ p{
 }
 
 .c1{
+
   opacity:0.7;
   width: 20rem;
   padding-top: 20rem;
@@ -262,6 +302,10 @@ outline: none;
 
 @media only screen and (min-width: 768px) {
     /* For desktop circles positions: */
+    .long-line{
+      left:-38.2vw;
+    }
+    
     .c1{
       width: 70vw;
       padding-top: 70vw;
