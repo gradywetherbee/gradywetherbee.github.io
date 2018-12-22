@@ -85,7 +85,7 @@ canvas {
 }
 
 .plain{
-  margin-top:8px;
+  margin:8px auto;
   padding:0;
   z-index: 0;
 }
@@ -133,7 +133,7 @@ h2{
   margin: 8px auto;
   background:white;
   transition-timing-function: ease;
-    transition-duration: 2s;
+    transition-duration: 0.3s;
 }
 
 #menu h2:hover{
@@ -164,6 +164,8 @@ h2{
 }
 
 .bottom-up {
+  color:white;
+  text-align: center;
   padding:80px 0px;
   box-sizing: border-box;
   height: 100vh;
@@ -181,12 +183,12 @@ h2{
     <canvas id="canvas" width="640" height="260"></canvas>
   </div>
   <div id="info">
-    <!--
-    <div class="plain">
+    
+    <div style="padding-top:0.3rem; padding-right:1rem; cursor: pointer;" class="plain">
       <h2 id="scoreboard">Score:0</h2>
       <h2 id="focus">Focus</h2>
     </div>
-  -->
+ 
     <div id="Xcontainer">
       <div id="a3-menu" class="square">
         <div id="a3-line1" class="line"></div>
@@ -198,11 +200,12 @@ h2{
   <div id="menu" class="hide-menu">
     <div class="bottom-up hide-menu">
       <div class="plain">
-      <h2 id="scoreboard" class="button-not-pressed">Score:0</h2>
+      <h2 id="scoreboard2" class="button-not-pressed">Score:0</h2>
       <h2 id="calibrate-button" class="button-not-pressed" onclick="calibrateGyroscope()">Calibrate Gyroscope</h2>
       <h2 id="restart-button" class="button-not-pressed" onclick="restartGame()">Restart</h2>
-      </div>
+      <p> Targeting Algorithm <br> (F to toggle)</p>
       <h2 id="focus" class="button-not-pressed">Focus</h2>
+      </div>
     </div>
   </div>
 
@@ -218,6 +221,7 @@ if (!/Mobi|Android/i.test(navigator.userAgent) || /iPad/i.test(navigator.userAge
        mobile = false;
        var info =  document.getElementById('info');
        info.style.top = 0;
+       document.getElementById('calibrate-button').style.display = "none";
    }
 
 var myGamePiece;
@@ -226,6 +230,7 @@ var myBullets = [];
 var myCannons = [];
 var myScore;
 var scoreboard = document.getElementById("scoreboard");
+var scoreboard2 = document.getElementById("scoreboard2");
 var focusButton = document.getElementById("focus");
 var m = Math;
 var mouseX;
@@ -359,7 +364,7 @@ function component(width, height, color, x, y, type, damage) {
 
     this.attackPlayer = function(player, attacker) {
         var direction = m.atan2(player.y-attacker.y,player.x-attacker.x);
-        attacker.angle = direction;
+        //attacker.angle = direction;
         var magnitude = 1;
         attacker.x += magnitude*m.cos(direction);
         attacker.y += magnitude*m.sin(direction);
@@ -499,8 +504,11 @@ function updateGameArea() {
         calibrateGyroscope();
       if (myGameArea.frameNo == 1 || everyinterval(20)) {
           x = myGameArea.canvas.width;
+          y = myGameArea.canvas.height;
           var size = m.random()*10+5;
-          myObstacles.push(new component(size, size, "rgb(" + m.random()*255+1 + ", "+ m.random()*25+1 + ", "+ m.random()*255+1 + ")", x,  m.random()*myGameArea.canvas.height+1));
+          var sign = Math.random() < 0.5 ? -1 : 1;
+          var sign2 = Math.random() < 0.5 ? -1 : 1;
+          myObstacles.push(new component(size, size, "rgb(" + m.random()*255+1 + ", "+ m.random()*25+1 + ", "+ m.random()*255+1 + ")", (0.5*x)+((x*m.random())*sign),  (0.5*y)+((y*m.random())*sign2)));
       }
       for (i = 0; i < myObstacles.length; i += 1) {
           myObstacles[i].attackPlayer(myGamePiece, myObstacles[i]);
@@ -512,6 +520,7 @@ function updateGameArea() {
           myCannons[i].update();
       }
       scoreboard.innerHTML = "Score: " + myScore;
+      scoreboard2.innerHTML = "Score: " + myScore;
       myGamePiece.newPos();
       myGamePiece.update();
     }
