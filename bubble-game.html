@@ -118,11 +118,11 @@ h1 {
 }
 
 h2{
-  border:1px solid black;
+  border:1px solid white;
   border-radius:30px;
   padding:6px 12px;
   margin:0 5px;
-  color:black;
+  color:white;
   display: inline;
 }
 
@@ -176,6 +176,10 @@ h2{
   z-index: 1;
 }
 
+.show-desktop{
+  display: none;
+}
+
 .bottom-up {
   color:white;
   text-align: center;
@@ -197,9 +201,9 @@ h2{
   </div>
   <div id="info">
     
-    <div style="padding-top:0.3rem; padding-right:1rem; cursor: pointer;" class="plain">
+    <div style="padding-top:0.3rem; padding-right:1rem; cursor:pointer;" class="plain">
       <h2 id="scoreboard">Score:0</h2>
-      <h2 id="focus">Focus</h2>
+      <h2 id="focus">Center</h2>
     </div>
  
     <div id="Xcontainer">
@@ -219,16 +223,19 @@ h2{
           <p>Practice makes perfect!<br><br><br></p>
         </div>
         <h1 style="text-decoration: underline;" id="scoreboard2" class="button-not-pressed">Score:0</h1>
-        <h2 id="restart-button" class="button-not-pressed" onclick="restartGame()">Restart</h2>
+        <p class="show-desktop">(R to restart)</p>
+        <h2 id="restart-button" class="button-not-pressed" onclick="restartGame()"> Restart</h2>
         <div id='settings'>
             <h1>Settings:</h1>
-            <p> Targeting Algorithm (F to toggle)</p>
-            <h2 id="focus2" class="button-not-pressed">Focus</h2>
+            <p> Targeting Algorithm: <br><span class="show-desktop">(F to toggle)</span></p>
+            <h2 id="focus2" class="button-not-pressed">Center</h2>
             <div id='calibrate-div'>
-                <p> Gyroscope</p>
+                <p> Gyroscope:</p>
                 <h2 id="calibrate-button" class="button-not-pressed" onclick="calibrateGyroscope()">Calibrate</h2>
             </div>
-            
+            <h1>How to Play:</h1>
+            <p class="show-desktop"> Use WASD to move.  <br>Use your mouse to aim.  <br>Good luck!</p>
+            <p class="show-mobile">  Calibrate your device in a good position <br> and tilt to move your player.  <br> Tap to aim.</p>
         </div>
       </div>
     </div>
@@ -247,6 +254,16 @@ if (!/Mobi|Android/i.test(navigator.userAgent) || /iPad/i.test(navigator.userAge
        var info =  document.getElementById('info');
        info.style.top = 0;
        document.getElementById('calibrate-div').style.display = "none";
+       var showMobList = document.getElementsByClassName("show-mobile");
+       for(i = 0; i < showMobList.length; i++ )
+       {
+        showMobList[i].style.display = 'none';
+       }
+       var showDeskList = document.getElementsByClassName("show-desktop");
+       for(i = 0; i < showDeskList.length; i++ )
+       {
+        showDeskList[i].style.display = 'block';
+       }
    }
 
 var myGamePiece;
@@ -295,10 +312,10 @@ document.getElementById('#a3-menu').click(function(){
 
 function startGame() {
     resizeCanvas();
-    myGamePiece = new component(6, 6, "black", 150, 150, "player");
-    myCannons.focus = true;
-    myCannons.push(new component(4,4, "black", 230, 200, "cannon", 1));
-    myCannons.push(new component(4,4, "black", 230, 500, "cannon", 1));
+    myGamePiece = new component(6, 6, "white", 150, 150, "player");
+    myCannons.Center = true;
+    myCannons.push(new component(4,4, "white", window.innerWidth*0.3, window.innerHeight*0.5, "cannon", 1));
+    myCannons.push(new component(4,4, "white", window.innerWidth*0.7, window.innerHeight*0.5, "cannon", 1));
     myGamePiece.gravity = 0.05;
     myGamePiece.damage = 2;
     myScore = 0;
@@ -343,8 +360,15 @@ var myGameArea = {
             else
               accelerate(0.3);
           }
+          //f for targeting focus
           if(e.keyCode == 70)
             changeCannonFocus();
+          //p for pause
+          if(e.keyCode == 80)
+            Pause();
+          //r for restart
+          if(e.keyCode == 82)
+            restartGame();
           if(e.keyCode == 65)
             myGamePiece.speedX -= 4;
           if(e.keyCode == 68)
@@ -384,13 +408,13 @@ function component(width, height, color, x, y, type, damage) {
         ctx.fillStyle = color;
         ctx.beginPath();
         ctx.arc(0,0,this.width,0,2*Math.PI);
-        if(type == "player" || type == "cannon"){
-          ctx.fill();
-        }
-        else{
+        // if(type == "player" || type == "cannon"){
+        //   ctx.fill();
+        // }
+        // else{
           ctx.strokeStyle = color;
-          ctx.stroke();
-        }
+          ctx.fill();
+        // }
         //ctx.fillRect(this.width / -2, this.height / -2, this.width, this.height);
         ctx.restore();
     }
@@ -409,14 +433,14 @@ function component(width, height, color, x, y, type, damage) {
     }
 
     this.fireBullet = function(target) {
-      var b = new component(this.damage, 1, "black", this.x, this.y, "bullet", this.damage);
+      var b = new component(this.damage, 1, "white", this.x, this.y, "bullet", this.damage);
       if(type == "player") {
         b.angle = m.atan2(this.y-mouseY,this.x-mouseX) -0.1 + (m.random() * 0.2);
       }
       else if(myObstacles.length > 0){
         b.angle = m.atan2(this.y-target.y,this.x-(target.x)) -0.1 + (m.random() * 0.2);
       }
-      var magnitude = 8;
+      var magnitude = 5;
       b.gravity = 0.05;
       b.speedX = -magnitude*m.cos(b.angle);
       b.speedY = -magnitude*m.sin(b.angle);
@@ -437,6 +461,7 @@ function component(width, height, color, x, y, type, damage) {
         this.speedX /= 1.02;
         this.speedY /= 1.02;
         this.y += this.speedY + this.gravitySpeed;
+        if(this.type == "player")
         this.hitBottom();
     }
     this.hitBottom = function() {
@@ -513,7 +538,7 @@ function updateGameArea() {
           if(myObstacles[i].width < 5){
             //split -> add new smaller obstacles
             var tiny1;
-            for(z = 0; z < 4; z++) {
+            for(z = 0; z < 5*m.random()+1; z++) {
               var sign = Math.random() < 0.5 ? -1 : 1;
               var sign2 = Math.random() < 0.5 ? -1 : 1;
               tiny1 = new component(2, 2, "rgb(" + m.random()*255+1 + ", "+ m.random()*25+1 + ", "+ m.random()*255+1 + ")", myObstacles[i].x + (6*m.random()),  myObstacles[i].y + (6*m.random()) );
@@ -558,7 +583,7 @@ function updateGameArea() {
     myGameArea.clear();
     myGameArea.frameNo += 1;
       if (everyinterval(20)){
-        if(myCannons.focus){
+        if(myCannons.center){
           var minIndex = 0;
           //find obstacle farthest left on canvas
           for(i = 1; i < myObstacles.length; i++){
@@ -591,13 +616,13 @@ function updateGameArea() {
     
       if(myGameArea.frameNo == 1)
         calibrateGyroscope();
-      if (myGameArea.frameNo == 1 || everyinterval(500/(window.innerWidth*window.innerHeight*3))) {
+      if (myGameArea.frameNo == 1 || (!mobile && everyinterval(500/(window.innerWidth*window.innerHeight))) || everyinterval(100)) {
           x = myGameArea.canvas.width;
           y = myGameArea.canvas.height;
-          var size = m.random()*15+10;
+          var size = m.random()*10+10;
           var sign = Math.random() < 0.5 ? -1 : 1;
           var sign2 = Math.random() < 0.5 ? -1 : 1;
-          myObstacles.push(new component(size, size, "rgb(" + m.random()*255+1 + ", "+ m.random()*25+1 + ", "+ m.random()*255+1 + ")", (0.5*x)+((x*m.random())*sign),  (0.5*y)+((y*m.random())*sign2)));
+          myObstacles.push(new component(size, size, "rgb(" + m.random()*255+1 + ", "+ m.random()*25+1 + ", "+ m.random()*255+1 + ")", (0.5*x)+((2*x*m.random())*sign),  (0.5*y)+((2*y*m.random())*sign2)));
       }
       for (i = 0; i < myObstacles.length; i += 1) {
           myObstacles[i].attackPlayer(myGamePiece, myObstacles[i]);
@@ -617,10 +642,10 @@ function updateGameArea() {
 }
 
 function changeCannonFocus(){
-  myCannons.focus = !myCannons.focus;
-  if(myCannons.focus) {
-    focusButton.innerHTML = "Focus";
-    focusButton2.innerHTML = "Focus";
+  myCannons.center = !myCannons.center;
+  if(myCannons.center) {
+    focusButton.innerHTML = "Center";
+    focusButton2.innerHTML = "Center";
   } else {
     focusButton.innerHTML = "Smallest";
     focusButton2.innerHTML = "Smallest";
