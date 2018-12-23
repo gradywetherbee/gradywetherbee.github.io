@@ -520,7 +520,7 @@ function updateGameArea() {
               var minIndex = 0;
               //find obstacle farthest left on canvas
               for(i = 1; i < myObstacles.length; i++){
-                if(myObstacles[i].x < myObstacles[minIndex].x){
+                if( m.abs((myObstacles[i].x - (window.innerWidth*0.5))) < m.abs((myObstacles[minIndex].x - (window.innerWidth*0.5)) )){
                   minIndex = i;
                 }
               }
