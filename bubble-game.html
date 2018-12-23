@@ -405,7 +405,7 @@ function component(width, height, color, x, y, type, damage) {
         ctx.save();
         ctx.translate(this.x, this.y);
         //ctx.rotate(this.angle);
-        ctx.fillStyle = color;
+        
         ctx.beginPath();
         ctx.arc(0,0,this.width,0,2*Math.PI);
         // if(type == "player" || type == "cannon"){
@@ -413,6 +413,7 @@ function component(width, height, color, x, y, type, damage) {
         // }
         // else{
           ctx.strokeStyle = color;
+          ctx.fillStyle = color;
           ctx.fill();
         // }
         //ctx.fillRect(this.width / -2, this.height / -2, this.width, this.height);
@@ -622,7 +623,7 @@ function updateGameArea() {
           var size = m.random()*10+10;
           var sign = Math.random() < 0.5 ? -1 : 1;
           var sign2 = Math.random() < 0.5 ? -1 : 1;
-          myObstacles.push(new component(size, size, "rgb(" + m.random()*255+1 + ", "+ m.random()*25+1 + ", "+ m.random()*255+1 + ")", (0.5*x)+((2*x*m.random())*sign),  (0.5*y)+((2*y*m.random())*sign2)));
+          myObstacles.push(new component(size, size, "rgba(" + m.random()*255+1 + ", "+ m.random()*25+1 + ", "+ m.random()*255+1 + ",1)", (0.5*x)+((2*x*m.random())*sign),  (0.5*y)+((2*y*m.random())*sign2)));
       }
       for (i = 0; i < myObstacles.length; i += 1) {
           myObstacles[i].attackPlayer(myGamePiece, myObstacles[i]);
