@@ -200,11 +200,12 @@ h2{
   <div id="menu" class="hide-menu">
     <div class="bottom-up hide-menu">
       <div class="plain">
-      <h2 id="scoreboard2" class="button-not-pressed">Score:0</h2>
+      <h1 style="text-decoration: underline;" id="scoreboard2" class="button-not-pressed">Score:0</h1>
       <h2 id="calibrate-button" class="button-not-pressed" onclick="calibrateGyroscope()">Calibrate Gyroscope</h2>
       <h2 id="restart-button" class="button-not-pressed" onclick="restartGame()">Restart</h2>
+      <h1>Settings:</h1>
       <p> Targeting Algorithm <br> (F to toggle)</p>
-      <h2 id="focus" class="button-not-pressed">Focus</h2>
+      <h2 id="focus2" class="button-not-pressed">Focus</h2>
       </div>
     </div>
   </div>
@@ -232,14 +233,14 @@ var myScore;
 var scoreboard = document.getElementById("scoreboard");
 var scoreboard2 = document.getElementById("scoreboard2");
 var focusButton = document.getElementById("focus");
+var focusButton2 = document.getElementById("focus2");
 var m = Math;
 var mouseX;
 var mouseY;
 var pause = false;
-
-
-
-$('#a3-menu').click(function(){
+  
+//pauses game and opens hamburger menu
+var Pause = function(){
   pause = !pause;
   $("#Xcontainer").toggleClass("whiteBackground");
   $("#menu").toggleClass("show-menu");
@@ -249,7 +250,10 @@ $('#a3-menu').click(function(){
   $("#a3-line1").toggleClass("a3-line1-close");
   $("#a3-line2").toggleClass("a3-line2-close");
   $("#a3-line3").toggleClass("a3-line3-close");
-});
+};
+
+//calls Pause() when hamburger icon is clicked on
+$('#a3-menu').click(Pause);
 
 /*
 document.getElementById('#a3-menu').click(function(){
@@ -296,6 +300,9 @@ var myGameArea = {
           myGamePiece.fireBullet();
         })
         focusButton.addEventListener('click', function (e) {
+          changeCannonFocus();
+        })
+        focusButton2.addEventListener('click', function (e) {
           changeCannonFocus();
         })
         window.addEventListener('keydown', function (e) {
@@ -455,6 +462,7 @@ function restartGame(){
 }
 
 function updateGameArea() {
+  if(!pause){
     var x, height, gap, minHeight, maxHeight, minGap, maxGap;
     for (i = 0; i < myObstacles.length; i ++) {
       for(j = 0; j < myBullets.length; j ++){
@@ -471,12 +479,14 @@ function updateGameArea() {
           }
         }
       }
+        //player runs into bubble
         if (myGamePiece.crashWith(myObstacles[i])) {
             window.removeEventListener("deviceorientation", deviceOrientationListener, true);
-            return;
+            Pause();
+            document.getElementById('a3-menu').style.display = "none";
         }
     }
-    if(!pause){
+
       myGameArea.clear();
       myGameArea.frameNo += 1;
           if (everyinterval(20)){
@@ -529,10 +539,13 @@ function updateGameArea() {
 
 function changeCannonFocus(){
   myCannons.focus = !myCannons.focus;
-  if(myCannons.focus)
+  if(myCannons.focus) {
     focusButton.innerHTML = "Focus";
-  else
+    focusButton2.innerHTML = "Focus";
+  } else {
     focusButton.innerHTML = "Split";
+    focusButton2.innerHTML = "Split";
+  }
 }
 
 function everyinterval(n) {
