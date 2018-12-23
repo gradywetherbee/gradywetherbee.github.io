@@ -13,9 +13,15 @@ html, body {
       border: 0;
       overflow: hidden;
       display: block;
-      -webkit-tap-highlight:none;
-      user-select: none;
       font-family: nunito, sans-serif;
+      
+      -webkit-tap-highlight:none;
+      -webkit-touch-callout: none;
+      -webkit-user-select: none;
+      -khtml-user-select: none;
+      -moz-user-select: none;
+      -ms-user-select: none;
+      user-select: none;
     }
 
     #Xcontainer {
@@ -25,9 +31,12 @@ html, body {
       width:auto;
       height:auto;
       display: inline;
-      -webkit-tap-highlight:none;
       user-select: none;
       border-radius:  40px;
+    }
+
+    #game-over{
+      display: none;
     }
 
     .whiteBackground{
@@ -102,6 +111,10 @@ canvas {
   box-sizing: border-box;
 
   justify-content: flex-end;
+}
+
+h1 {
+  margin-bottom:0;
 }
 
 h2{
@@ -200,12 +213,23 @@ h2{
   <div id="menu" class="hide-menu">
     <div class="bottom-up hide-menu">
       <div class="plain">
-      <h1 style="text-decoration: underline;" id="scoreboard2" class="button-not-pressed">Score:0</h1>
-      <h2 id="calibrate-button" class="button-not-pressed" onclick="calibrateGyroscope()">Calibrate Gyroscope</h2>
-      <h2 id="restart-button" class="button-not-pressed" onclick="restartGame()">Restart</h2>
-      <h1>Settings:</h1>
-      <p> Targeting Algorithm <br> (F to toggle)</p>
-      <h2 id="focus2" class="button-not-pressed">Focus</h2>
+        <div id='game-over'>
+          <h1>GAME OVER</h1>
+          <hr>
+          <p>Practice makes perfect!<br><br><br></p>
+        </div>
+        <h1 style="text-decoration: underline;" id="scoreboard2" class="button-not-pressed">Score:0</h1>
+        <h2 id="restart-button" class="button-not-pressed" onclick="restartGame()">Restart</h2>
+        <div id='settings'>
+            <h1>Settings:</h1>
+            <p> Targeting Algorithm (F to toggle)</p>
+            <h2 id="focus2" class="button-not-pressed">Focus</h2>
+            <div id='calibrate-div'>
+                <p> Gyroscope</p>
+                <h2 id="calibrate-button" class="button-not-pressed" onclick="calibrateGyroscope()">Calibrate</h2>
+            </div>
+            
+        </div>
       </div>
     </div>
   </div>
@@ -222,7 +246,7 @@ if (!/Mobi|Android/i.test(navigator.userAgent) || /iPad/i.test(navigator.userAge
        mobile = false;
        var info =  document.getElementById('info');
        info.style.top = 0;
-       document.getElementById('calibrate-button').style.display = "none";
+       document.getElementById('calibrate-div').style.display = "none";
    }
 
 var myGamePiece;
@@ -479,11 +503,13 @@ function updateGameArea() {
           }
         }
       }
-        //player runs into bubble
+        //player runs into bubble - GAME OVER
         if (myGamePiece.crashWith(myObstacles[i])) {
             window.removeEventListener("deviceorientation", deviceOrientationListener, true);
             Pause();
             document.getElementById('a3-menu').style.display = "none";
+            document.getElementById('game-over').style.display = "inline";
+            document.getElementById('settings').style.display = "none";
         }
     }
 
