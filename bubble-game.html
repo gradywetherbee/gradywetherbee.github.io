@@ -320,9 +320,10 @@ var myGameArea = {
             mouseY=e.y;
         })
         window.addEventListener("deviceorientation", deviceOrientationListener, true);
-        this.canvas.addEventListener('click', function (e) {
-          myGamePiece.fireBullet();
-        })
+        //fire on click
+        // this.canvas.addEventListener('click', function (e) {
+        //   myGamePiece.fireBullet();
+        // })
         focusButton.addEventListener('click', function (e) {
           changeCannonFocus();
         })
@@ -383,8 +384,9 @@ function component(width, height, color, x, y, type, damage) {
         ctx.fillStyle = color;
         ctx.beginPath();
         ctx.arc(0,0,this.width,0,2*Math.PI);
-        if(type == "player" || type == "cannon")
+        if(type == "player" || type == "cannon"){
           ctx.fill();
+        }
         else{
           ctx.strokeStyle = color;
           ctx.stroke();
@@ -394,11 +396,15 @@ function component(width, height, color, x, y, type, damage) {
     }
 
     this.attackPlayer = function(player, attacker) {
-        var direction = m.atan2(player.y-attacker.y,player.x-attacker.x);
-        //attacker.angle = direction;
-        var magnitude = 1;
-        attacker.x += magnitude*m.cos(direction);
-        attacker.y += magnitude*m.sin(direction);
+        if(attacker.width >= 10) {  
+          var direction = m.atan2(player.y-attacker.y,player.x-attacker.x);
+          //attacker.angle = direction;
+          var magnitude = 1;
+          attacker.x += magnitude*m.cos(direction);
+          attacker.y += magnitude*m.sin(direction);
+        } else {
+          attacker.newPos();
+        }
         attacker.update();
     }
 
@@ -497,9 +503,44 @@ function updateGameArea() {
           myBullets.pop();
           myScore ++;
           myObstacles[i].width -= damage;
-          if(myObstacles[i].width < 5){
-            myObstacles[i] = myObstacles[myObstacles.length-1]
+          if(myObstacles[i].width < 3){
+            //overwrite obstacle to be deleted and pop the obstacle that was just copied from the end
+            myObstacles[i] = myObstacles[myObstacles.length-1] 
             myObstacles.pop();
+            return;
+          }
+          
+          if(myObstacles[i].width < 5){
+            //split -> add new smaller obstacles
+            var tiny1;
+            for(z = 0; z < 4; z++) {
+              var sign = Math.random() < 0.5 ? -1 : 1;
+              var sign2 = Math.random() < 0.5 ? -1 : 1;
+              tiny1 = new component(2, 2, "rgb(" + m.random()*255+1 + ", "+ m.random()*25+1 + ", "+ m.random()*255+1 + ")", myObstacles[i].x + (6*m.random()),  myObstacles[i].y + (6*m.random()) );
+              tiny1.speedX = 6*m.random()*sign;
+              tiny1.speedY = 6*m.random()*sign2;
+              myObstacles.push(tiny1);
+            }
+            //delete old obstacle
+            myObstacles[i] = myObstacles[myObstacles.length-1] 
+            myObstacles.pop();
+            return;
+          }
+          if(myObstacles[i].width < 10){
+            //split -> add new smaller obstacles
+            var tiny1;
+            for(z = 0; z < 3; z++) {
+              var sign = Math.random() < 0.5 ? -1 : 1;
+              var sign2 = Math.random() < 0.5 ? -1 : 1;
+              tiny1 = new component(5, 5, "rgb(" + m.random()*255+1 + ", "+ m.random()*25+1 + ", "+ m.random()*255+1 + ")", myObstacles[i].x + (6*m.random()),  myObstacles[i].y + (6*m.random()) );
+              tiny1.speedX = 6*m.random()*sign;
+              tiny1.speedY = 6*m.random()*sign2;
+              myObstacles.push(tiny1);
+            }
+            //delete old obstacle
+            myObstacles[i] = myObstacles[myObstacles.length-1] 
+            myObstacles.pop();
+            return;
           }
         }
       }
@@ -507,41 +548,53 @@ function updateGameArea() {
         if (myGamePiece.crashWith(myObstacles[i])) {
             window.removeEventListener("deviceorientation", deviceOrientationListener, true);
             Pause();
+            //hide menu toggle when game is over and change menu to show game over text
             document.getElementById('a3-menu').style.display = "none";
             document.getElementById('game-over').style.display = "inline";
             document.getElementById('settings').style.display = "none";
         }
     }
 
-      myGameArea.clear();
-      myGameArea.frameNo += 1;
-          if (everyinterval(20)){
-            if(myCannons.focus){
-              var minIndex = 0;
-              //find obstacle farthest left on canvas
-              for(i = 1; i < myObstacles.length; i++){
-                if( m.abs((myObstacles[i].x - (window.innerWidth*0.5))) < m.abs((myObstacles[minIndex].x - (window.innerWidth*0.5)) )){
-                  minIndex = i;
-                }
-              }
-              //target it
-              for(i = 0; i < myCannons.length; i++){
-                myCannons[i].fireBullet(myObstacles[minIndex]);
-              }
-            } else {
-              //target separate obstacles
-              for(i = 0; i < myCannons.length; i++){
-                myCannons[i].fireBullet(myObstacles[i%myObstacles.length]);
-              }
+    myGameArea.clear();
+    myGameArea.frameNo += 1;
+      if (everyinterval(20)){
+        if(myCannons.focus){
+          var minIndex = 0;
+          //find obstacle farthest left on canvas
+          for(i = 1; i < myObstacles.length; i++){
+            //target balloon closest to middle of screen in x direction
+            if( m.abs((myObstacles[i].x - (window.innerWidth*0.5))) < m.abs((myObstacles[minIndex].x - (window.innerWidth*0.5)) )){
+              minIndex = i;
             }
-
           }
+          for(i = 0; i < myCannons.length; i++){
+            myCannons[i].fireBullet(myObstacles[minIndex]);
+          }
+        } 
+        else {
+         //target tiny balloons first
+          var z = 0;
+            while(!(myObstacles[z].width < 5) && z < myObstacles.length-1){
+              z++;
+            }
+          for(i = 0; i < myCannons.length; i++){
+            myCannons[i].fireBullet(myObstacles[z]);
+          }
+          // //target separate obstacles
+          // for(i = 0; i < myCannons.length; i++){
+          //   myCannons[i].fireBullet(myObstacles[i%myObstacles.length]);
+          // }
+        }
+    }
+    if(everyinterval(5))
+        myGamePiece.fireBullet();   
+    
       if(myGameArea.frameNo == 1)
         calibrateGyroscope();
       if (myGameArea.frameNo == 1 || everyinterval(20)) {
           x = myGameArea.canvas.width;
           y = myGameArea.canvas.height;
-          var size = m.random()*10+5;
+          var size = m.random()*15+10;
           var sign = Math.random() < 0.5 ? -1 : 1;
           var sign2 = Math.random() < 0.5 ? -1 : 1;
           myObstacles.push(new component(size, size, "rgb(" + m.random()*255+1 + ", "+ m.random()*25+1 + ", "+ m.random()*255+1 + ")", (0.5*x)+((x*m.random())*sign),  (0.5*y)+((y*m.random())*sign2)));
@@ -569,8 +622,8 @@ function changeCannonFocus(){
     focusButton.innerHTML = "Focus";
     focusButton2.innerHTML = "Focus";
   } else {
-    focusButton.innerHTML = "Split";
-    focusButton2.innerHTML = "Split";
+    focusButton.innerHTML = "Smallest";
+    focusButton2.innerHTML = "Smallest";
   }
 }
 
