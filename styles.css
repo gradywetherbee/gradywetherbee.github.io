@@ -146,6 +146,10 @@ p{
   /* border:2px solid gold; */
 }
 
+.inline{
+  display:inline !important;
+}
+
 .c6-img{
   will-change: transform;
   display: block;
