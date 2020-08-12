@@ -38,7 +38,7 @@ function handleTouchMove(evt) {
     xDown = null;
     yDown = null;  
     
-    console.log(
+    window.alert(
         "xDiff: " + xDiff + 
         "\nyDiff: " + yDiff +
         "\nSwipe direction: " + swipeDirection
