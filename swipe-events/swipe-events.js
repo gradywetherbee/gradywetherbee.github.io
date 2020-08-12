@@ -1,5 +1,7 @@
+window.alert("hello from swipe.js");
+
 document.addEventListener('touchstart', handleTouchStart, false);        
-document.addEventListener('touchmove', handleTouchMove, false);
+document.addEventListener('touchend', handleTouchEnd, false);
 
 var xDown = null;                                                        
 var yDown = null;                                                        
@@ -8,6 +10,23 @@ function handleTouchStart(evt) {
     xDown = evt.originalEvent.touches[0].clientX;                                      
     yDown = evt.originalEvent.touches[0].clientY;                                      
 };                                                
+
+function handleTouchEnd(evt) {  
+    if ( ! xDown || ! yDown ) {
+        return;
+    }                      
+                     
+    var xUp = evt.originalEvent.touches[0].clientX;                                    
+    var yUp = evt.originalEvent.touches[0].clientY;
+
+    var xDiff = xDown - xUp;
+    var yDiff = yDown - yUp;   
+                           
+    window.alert(
+        "xDiff: " + xDiff + 
+        "\nyDiff: " + yDiff
+    );
+};     
 
 function handleTouchMove(evt) {
     if ( ! xDown || ! yDown ) {
