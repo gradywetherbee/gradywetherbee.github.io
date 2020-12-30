@@ -257,7 +257,7 @@ outline: none;
   height:100px;
   display: block;
   zoom:0.4;
-
+  -moz-transform: scale(0.4);
 }
 .square:hover{
   cursor:pointer;
