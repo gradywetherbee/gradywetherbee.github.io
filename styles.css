@@ -249,7 +249,7 @@ outline: none;
 /*Mobile menu hamburger styles*/
 .square{
   /* padding-top: 3px; */
-/*   position:relative; */
+  position:relative;
   /* top: 50%; */
   /* transform: translateY(-50%); */
   /* margin:auto auto; */
@@ -258,7 +258,6 @@ outline: none;
   display: block;
   zoom:0.4;
   -moz-transform: scale(0.4);
-  position: absolute;
   -moz-transform-origin: 0 0;
 }
 .square:hover{
