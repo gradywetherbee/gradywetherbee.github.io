@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reset Gmeet Mic</title>
+    <link rel="icon" href="https://fonts.gstatic.com/s/i/productlogos/meet_2020q4/v1/web-24dp/logo_meet_2020q4_color_1x_web_24dp.png">
+</head>
+<style>
+    body {
+        font-family: sans-serif;
+        margin: 0;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+    }
+
+    li {
+        margin-bottom: 0.5rem;
+    }
+
+    code {
+        border-radius: 3px;
+        background: #eee;
+        color: rgb(55, 55, 55);
+        padding: 0 3px;
+        font-family: courier, monospace;
+    }
+
+    .container {
+        max-width: 700px;
+        padding: 1rem;
+    }
+</style>
+
+<body>
+    <div class="container">
+        <h2>Reset Gmeet Mic</h2>
+        <h3>What is this?</h3>
+        <p>Reset Gmeet Mic is a bookmarklet (aka a script that you can save as a bookmark) that lets you instantly set your computer's preferred mic in Google Meet to the built-in microphone so that the sound quality of your output over bluetooth is much better. </p>
+        <p>Unfortunately, Google Meet often resets itself to use AirPods' microphones when reconnecting to AirPods, which results in poor output audio quality because using AirPods microphones forces your AirPods to use a bluetooth protocol meant for talking on the phone, which makes the audio output much worse quality. </p>
+        <h3>How do I use it?</h3>
+        <ol>
+            <li>Drag this link to your bookmarks bar:
+                <a
+                    href="javascript:(async%20function()%7Basync%20function%20withExponentialBackoff(%7B%20fn%2C%20maxRetries%20%3D%2010%2C%20delay%20%3D%2050%20%7D)%20%7B%0A%20let%20retryCount%20%3D%200%3B%0A%0A%20while%20(true)%20%7B%0A%20try%20%7B%0A%20const%20result%20%3D%20await%20fn()%3B%0A%20return%20result%3B%0A%20%7D%20catch%20(error)%20%7B%0A%20if%20(retryCount%20%3E%3D%20maxRetries)%20%7B%0A%20throw%20error%3B%0A%20%7D%0A%20const%20backoff%20%3D%20Math.pow(2%2C%20retryCount)%20*%20delay%3B%0A%20await%20new%20Promise((resolve)%20%3D%3E%20setTimeout(resolve%2C%20backoff))%3B%0A%20retryCount%2B%2B%3B%0A%20%7D%0A%20%7D%0A%7D%0A%0Aconst%20clickEvent%20%3D%20new%20MouseEvent(%22click%22%2C%20%7B%0A%20%22view%22%3A%20window%2C%0A%20%22bubbles%22%3A%20true%2C%0A%20%22cancelable%22%3A%20true%0A%7D)%3B%0A%0Alet%20moreActionsButton%20%3D%20document.querySelector(%22button%5Baria-label%3D'More%20options'%5D%22)%0A%0AmoreActionsButton.dispatchEvent(clickEvent)%0A%0Aawait%20withExponentialBackoff(%7B%0A%20fn%3A%20clickSettingsButton%0A%7D)%0A%0Aawait%20withExponentialBackoff(%7B%0A%20fn%3A%20clickMicrophoneSelector%0A%7D)%0A%0Aawait%20withExponentialBackoff(%7B%0A%20fn%3A%20clickBuiltInMicOption%0A%7D)%0A%0Aawait%20withExponentialBackoff(%7B%0A%20fn%3A%20checkMicrophoneBuiltInSelected%0A%7D)%0A%0Aawait%20withExponentialBackoff(%7B%0A%20fn%3A%20closeDialog%0A%7D)%0A%0Aasync%20function%20clickSettingsButton()%20%7B%0A%20let%20settingsButton%20%3D%20document.querySelector(%22ul%5Baria-label%3D'Call%20options'%5D%20%3E%20li%3Anth-child(15)%22)%0A%0A%20if(!settingsButton)%20%7B%0A%20throw%20new%20Error('settings%20button%20not%20found')%0A%20%7D%0A%20%0A%20settingsButton.dispatchEvent(clickEvent)%0A%7D%0A%0Aasync%20function%20clickMicrophoneSelector()%20%7B%0A%20let%20micSelector%20%3D%20document.querySelector(%22div%5Bdata-aria-label%3D'Select%20Microphone'%5D%20%3E%20div%20%3E%20div%20%3E%20div%22)%0A%0A%20if(!micSelector)%20%7B%0A%20throw%20new%20Error('mic%20selector%20not%20found')%0A%20%7D%0A%20%0A%20micSelector.dispatchEvent(clickEvent)%0A%7D%0A%0Aasync%20function%20clickBuiltInMicOption()%20%7B%0A%20let%20micOption%20%3D%20document.querySelector(%22li%5Baria-label*%3D'(Built-in)'%5D%22)%0A%0A%20if(!micOption)%20%7B%0A%20throw%20new%20Error('mic%20selector%20not%20found')%0A%20%7D%0A%20%0A%20micOption.dispatchEvent(clickEvent)%0A%7D%0A%0Aasync%20function%20closeDialog()%20%7B%0A%20let%20closeButton%20%3D%20document.querySelector(%22button%5Baria-label%3D'Close%20dialog'%5D%22)%0A%0A%20if(!closeButton)%20%7B%0A%20throw%20new%20Error('mic%20selector%20not%20found')%0A%20%7D%0A%20%0A%20closeButton.dispatchEvent(clickEvent)%0A%7D%0A%0Aasync%20function%20checkMicrophoneBuiltInSelected()%20%7B%0A%20let%20builtInSelected%20%3D%20document.querySelector(%22div%5Bdata-aria-label%3D'Select%20Microphone'%5D%20%3E%20div%20%3E%20div%20%3E%20div%20%3E%20span%3Anth-of-type(2)%20%3E%20span%22)%0A%0A%20if(!builtInSelected%3F.innerText%3F.includes('(Built-in)'))%20%7B%0A%20throw%20new%20Error('built%20in%20mic%20not%20selected')%0A%20%7D%0A%7D%7D)()%3B">Reset
+                    Gmeet Mic</a>
+            </li>
+            <li>Whenever you join a Google Meet call, just click your new "Reset Gmeet Mic" bookmark</li>
+            <li>Enjoy your calls with the best sound quality from your AirPods</li>
+        </ol>
+    </div>
+</body>
+
+</html>
