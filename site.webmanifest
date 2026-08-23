@@ -1,9 +1,9 @@
 {
-    "name": "Grady's Portfolio",
-    "short_name": "Grady's Portfolio",
+    "name": "Grady Wetherbee",
+    "short_name": "Grady Wetherbee",
     "icons": [
         {
-            "src": "/android-chrome-192x192.png",
+            "src": "android-chrome-192x192.png",
             "sizes": "192x192",
             "type": "image/png"
         }
