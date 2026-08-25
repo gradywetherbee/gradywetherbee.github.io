@@ -1410,9 +1410,11 @@ createMiniCanvas.plugin('tool-shapes', ['item-shapes'], function (core) {
 
   core.on('pointerup', () => {
     if (!currentShape) return false;
-    // A click with no drag leaves nothing behind, and costs no undo step.
-    if (!currentShape.w && !currentShape.h) { core.scene.items.pop(); core.forget(); }
+    const made = currentShape;
     currentShape = null;
+    // A click with no drag leaves nothing behind, and costs no undo step.
+    if (!made.w && !made.h) { core.scene.items.pop(); core.forget(); }
+    else if (core.selectItem) { core.setTool('select'); core.selectItem(made); }
     return false;
   });
   core.on('cancel', () => { currentShape = null; return false; });
@@ -1680,12 +1682,14 @@ createMiniCanvas.plugin('tool-image', ['item-image'], function (core) {
       const at = world || core.viewCenter();
       core.remember();
       core.imageCache.set(src, image);
-      core.scene.items.push({
+      const item = {
         type: 'image',
         x: core.round(at.x - w / 2), y: core.round(at.y - h / 2),
         w: core.round(w), h: core.round(h),
         src: src
-      });
+      };
+      core.scene.items.push(item);
+      if (core.selectItem) { core.setTool('select'); core.selectItem(item); }
       core.requestRedraw();
     };
     image.src = src;
@@ -2465,6 +2469,7 @@ createMiniCanvas.plugin('clipboard', ['select'], function (core) {
       if (dx || dy) core.transformItem(copy, (x, y) => [core.round(x + dx), core.round(y + dy)]);
       return copy;
     });
+    core.setTool('select');   // leaving another tool would clear the selection
     core.remember();
     core.scene.items.push(...copies);
     core.selection.clear();
