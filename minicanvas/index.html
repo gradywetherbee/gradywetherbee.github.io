@@ -1,0 +1,2922 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>minicanvas</title>
+<meta name="description" content="A minimal canvas for drawing and sketching.">
+<meta name="author" content="Grady Wetherbee">
+<meta property="og:title" content="minicanvas">
+<meta property="og:description" content="A minimal canvas for drawing and sketching.">
+<meta property="og:url" content="https://gradywetherbee.com/minicanvas/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Grady Wetherbee">
+<meta name="twitter:card" content="summary">
+<link rel="apple-touch-icon" sizes="180x180" href="../apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="32x32" href="../favicon-32x32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="../favicon-16x16.png">
+<!-- Material Symbols. The only network dependency on this page, and it belongs to
+     the demo chrome rather than to minicanvas: every button keeps an aria-label,
+     so if the font never arrives the buttons still say what they are. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200">
+
+<style>
+  /* Every colour is oklch, with a hex declared first so a browser older than oklch
+     still gets the right thing: it drops the declaration it cannot parse and keeps
+     the hex. Dark mode holds each hue and chroma and moves only the lightness, so
+     the palette reads as the same six pens either way. */
+  :root {
+    --ink: #17171a;                          --ink: oklch(0.20 0.005 285);
+    --chrome: #f6f6f4;                       --chrome: oklch(0.97 0.002 285);
+    --surface: #ffffff;                      --surface: oklch(1 0 0);
+    --rule: #e0e0dc;                         --rule: oklch(0.90 0.003 285);
+    --edge: rgba(0,0,0,.2);                  --edge: oklch(0 0 0 / 0.2);
+    --paper: #ffffff;                        --paper: oklch(1 0 0);
+    --handle-fill: #ffffff;                  --handle-fill: oklch(1 0 0);
+    --selection: #1a73ff;                    --selection: oklch(0.60 0.21 258);
+    --selection-tint: rgba(26,115,255,.28);  --selection-tint: oklch(0.60 0.21 258 / 0.28);
+    --shadow: rgba(0,0,0,.14);               --shadow: oklch(0 0 0 / 0.14);
+    /* The six pens. Stored files hold the light hex; the renderer looks the colour
+       up here at draw time, which is how a dark theme reaches inside the canvas. */
+    --pen-ink: #17171a;                      --pen-ink: oklch(0.20 0.005 285);
+    --pen-red: #c0392b;                      --pen-red: oklch(0.53 0.17 27);
+    --pen-amber: #d98c1f;                    --pen-amber: oklch(0.70 0.14 68);
+    --pen-green: #2e8b57;                    --pen-green: oklch(0.55 0.12 155);
+    --pen-blue: #1f6feb;                     --pen-blue: oklch(0.56 0.19 258);
+    --pen-violet: #6b4de6;                   --pen-violet: oklch(0.53 0.22 285);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ink: #e9e8e4;                          --ink: oklch(0.93 0.004 285);
+      --chrome: #131316;                       --chrome: oklch(0.18 0.004 285);
+      --surface: #1e1e22;                      --surface: oklch(0.24 0.005 285);
+      --rule: #34343a;                         --rule: oklch(0.33 0.006 285);
+      --edge: rgba(255,255,255,.28);           --edge: oklch(1 0 0 / 0.28);
+      --paper: #1a1a1e;                        --paper: oklch(0.21 0.005 285);
+      --handle-fill: #1a1a1e;                  --handle-fill: oklch(0.21 0.005 285);
+      --selection: #6fa8ff;                    --selection: oklch(0.74 0.15 258);
+      --selection-tint: rgba(111,168,255,.30); --selection-tint: oklch(0.74 0.15 258 / 0.30);
+      --shadow: rgba(0,0,0,.5);                --shadow: oklch(0 0 0 / 0.5);
+      --pen-ink: #ecebe7;                      --pen-ink: oklch(0.94 0.004 285);
+      --pen-red: #ff8b7a;                      --pen-red: oklch(0.74 0.15 27);
+      --pen-amber: #e8b872;                    --pen-amber: oklch(0.82 0.12 68);
+      --pen-green: #74c79a;                    --pen-green: oklch(0.78 0.12 155);
+      --pen-blue: #85b3ff;                     --pen-blue: oklch(0.76 0.14 258);
+      --pen-violet: #b4a3ff;                   --pen-violet: oklch(0.76 0.15 285);
+    }
+  }
+
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; overflow: hidden; background: var(--chrome); color: var(--ink);
+    font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  #board { position: absolute; inset: 0; width: 100%; height: 100%;
+           background: var(--paper); touch-action: none; }
+
+  /* The toolbar floats over the canvas rather than pushing it down, so the drawing
+     surface is the whole window and the chrome is a thing on top of it. */
+  /* Centred without a transform, so nothing here becomes a containing block: the
+     tooltip is fixed-positioned and needs to escape this element's clipping. */
+  #toolbar {
+    position: fixed; bottom: 16px; left: 12px; right: 12px;
+    margin: 0 auto; width: fit-content; max-width: calc(100vw - 24px);
+    display: flex; flex-wrap: nowrap; align-items: center; gap: 2px;
+    padding: 6px; overflow-x: auto; overscroll-behavior-x: contain;
+    scrollbar-width: none;
+    background: var(--surface); border: 1px solid var(--rule); border-radius: 10px;
+    box-shadow: 0 6px 24px var(--shadow);
+    transition: opacity .15s ease, transform .15s ease;
+  }
+  #toolbar::-webkit-scrollbar { display: none; }
+  /* Nothing in the bar may shrink or wrap: too much content scrolls sideways
+     rather than folding onto a second line. */
+  #toolbar > *, .group > * { flex: 0 0 auto; }
+  #toolbar.away { opacity: 0; transform: translateY(16px); pointer-events: none; }
+  #peek {
+    position: fixed; bottom: 16px; left: 12px; right: 12px; margin: 0 auto;
+    width: fit-content; opacity: 0; pointer-events: none; transition: opacity .15s ease;
+  }
+  #peek.here { opacity: .8; pointer-events: auto; }
+
+  .divider { width: 1px; align-self: stretch; margin: 2px 5px; background: var(--rule); }
+  #swatches { display: flex; align-items: center; gap: 6px; }
+
+  button {
+    font: inherit; color: inherit;
+    display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+    height: 30px; padding: 0 8px;
+    border: 1px solid transparent; border-radius: 7px;
+    background: transparent; cursor: pointer;
+  }
+  /* An icon button is a square: the icon is the whole label. */
+  button:has(> .icon) { width: 30px; padding: 0; }
+  /* Fixed width is what stops the jump; tabular-nums keeps the digits themselves
+     steady too, and the width is sized for icon + gap + the widest label. The
+     square-icon-button rule below also matches this button, since it starts with
+     an icon too, so width and padding are restated here to win on specificity. */
+  #opacity { width: 74px; padding: 0 8px; font-variant-numeric: tabular-nums; }
+  /* `button` sets a display, which beats the browser's own [hidden] rule, so any
+     button that hides itself has to be told again here. */
+  button[hidden] { display: none; }
+  button:hover { background: var(--chrome); }
+  button:focus-visible { outline: 2px solid var(--selection); outline-offset: 1px; }
+  button[aria-pressed="true"] { background: var(--ink); color: var(--surface); }
+
+  /* A pressed tool shows a filled glyph, which reads at a glance in a way that a
+     background tint alone does not. */
+  button[aria-pressed="true"] .icon { font-variation-settings: 'FILL' 1; }
+  .icon {
+    font-family: 'Material Symbols Outlined';
+    font-variation-settings: 'FILL' 0;
+    font-size: 20px; line-height: 1; font-weight: normal; font-style: normal;
+    letter-spacing: normal; white-space: nowrap; direction: ltr;
+    -webkit-font-feature-settings: 'liga'; font-feature-settings: 'liga';
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .swatch {
+    width: 22px; min-width: 22px; height: 22px; padding: 0;
+    border-radius: 50%; border: 1px solid var(--edge);
+  }
+  .swatch[aria-pressed="true"] { background: none;
+    box-shadow: 0 0 0 2px var(--surface), 0 0 0 3px var(--ink); }
+
+  /* Tooltips carry the name and the shortcut, so the icons stay learnable without
+     a legend taking up room. One fixed element rather than a pseudo-element on each
+     button: the bar scrolls, and anything drawn inside it would be clipped by that. */
+  #tip {
+    position: fixed; z-index: 5; padding: 4px 8px; border-radius: 5px;
+    background: var(--ink); color: var(--surface);
+    font-size: 11px; white-space: nowrap; pointer-events: none;
+    opacity: 0; transition: opacity .1s ease;
+  }
+  #tip.here { opacity: 1; }
+
+  /* A group is only a wrapper for showing and hiding: display:contents keeps its
+     buttons as direct flex children of the bar, so grouping changes nothing about
+     the layout until something is hidden. */
+  .group { display: contents; }
+  .group[hidden] { display: none; }
+
+  /* The scene, as data, in the corner. Out of the way until the button asks for it. */
+  #scene-panel {
+    position: fixed; top: 12px; right: 12px; width: min(400px, calc(100vw - 24px));
+    background: var(--surface); border: 1px solid var(--rule); border-radius: 8px;
+    box-shadow: 0 4px 16px var(--shadow); overflow: hidden;
+  }
+  #scene-panel[hidden], #download-menu[hidden] { display: none; }
+  textarea {
+    width: 100%; height: 240px; padding: 8px; border: 0;
+    font: inherit; resize: vertical; white-space: pre; color: inherit;
+    background: var(--chrome); color-scheme: light dark;
+  }
+  .row { display: flex; gap: 4px; padding: 7px; border-top: 1px solid var(--rule); }
+  .row button, #download-menu button { border-color: var(--rule); }
+
+  /* The download menu hangs above its button, placed by the same code that places
+     the tooltip, so it too escapes the scrolling bar. */
+  #download-menu {
+    position: fixed; z-index: 4; display: flex; flex-direction: column; gap: 2px;
+    padding: 4px; background: var(--surface); border: 1px solid var(--rule);
+    border-radius: 8px; box-shadow: 0 4px 16px var(--shadow);
+  }
+  #download-menu button { width: 100%; justify-content: flex-start; border-color: transparent; }
+  #download-menu button:hover { background: var(--chrome); }
+</style>
+
+<canvas id="board"></canvas>
+
+<div id="toolbar">
+  <!-- Making things. Put away while something is selected, since the toolbar is
+       then about the thing you picked rather than about making another one. -->
+  <span class="group" id="tool-group">
+    <button data-tool="select" data-tip="Select · V" aria-label="Select"><span class="icon">arrow_selector_tool</span></button>
+    <button data-tool="draw" aria-pressed="true" data-tip="Draw · D" aria-label="Draw"><span class="icon">ink_pen</span></button>
+    <button data-tool="rect" data-tip="Rectangle · R" aria-label="Rectangle"><span class="icon">square</span></button>
+    <button data-tool="oval" data-tip="Oval · O" aria-label="Oval"><span class="icon">circle</span></button>
+    <button data-tool="text" data-tip="Text · T" aria-label="Text"><span class="icon">title</span></button>
+    <button data-tool="erase" data-tip="Erase · E" aria-label="Erase"><span class="icon">ink_eraser</span></button>
+    <button data-tool="pan" data-tip="Hand · H or hold space" aria-label="Hand"><span class="icon">pan_tool</span></button>
+    <button id="add-image" data-tip="Add image · U or paste image" aria-label="Add image"><span class="icon">image</span></button>
+    <span class="divider"></span>
+  </span>
+
+  <button data-width="1" data-tip="Thin · W to cycle" aria-label="Thin"><span class="icon">pen_size_3</span></button>
+  <button data-width="3" aria-pressed="true" data-tip="Medium · W to cycle" aria-label="Medium"><span class="icon">pen_size_4</span></button>
+  <button data-width="8" data-tip="Thick · W to cycle" aria-label="Thick"><span class="icon">pen_size_5</span></button>
+  <button id="fill" aria-pressed="false" data-tip="Fill · F">Fill</button>
+  <button id="opacity" data-tip="Opacity · G to cycle"><span class="icon">opacity</span><span id="opacity-value">100%</span></button>
+
+  <span class="divider"></span>
+
+  <span id="swatches">
+    <button class="swatch" data-color="#17171a" style="background:var(--pen-ink)" aria-pressed="true" data-tip="Ink · C to cycle" aria-label="Ink"></button>
+    <button class="swatch" data-color="#c0392b" style="background:var(--pen-red)" data-tip="Red · C to cycle" aria-label="Red"></button>
+    <button class="swatch" data-color="#d98c1f" style="background:var(--pen-amber)" data-tip="Amber · C to cycle" aria-label="Amber"></button>
+    <button class="swatch" data-color="#2e8b57" style="background:var(--pen-green)" data-tip="Green · C to cycle" aria-label="Green"></button>
+    <button class="swatch" data-color="#1f6feb" style="background:var(--pen-blue)" data-tip="Blue · C to cycle" aria-label="Blue"></button>
+    <button class="swatch" data-color="#6b4de6" style="background:var(--pen-violet)" data-tip="Violet · C to cycle" aria-label="Violet"></button>
+  </span>
+
+  <!-- Anything with something selected. Layer order needs one item; alignment and
+       grouping need two things to act on each other. -->
+  <span class="group" id="order-tools" hidden>
+    <span class="divider"></span>
+    <button data-order="1" data-tip="Bring to front · ]" aria-label="Bring to front"><span class="icon">flip_to_front</span></button>
+    <button data-order="-1" data-tip="Send to back · [" aria-label="Send to back"><span class="icon">flip_to_back</span></button>
+  </span>
+
+  <span class="group" id="align-tools" hidden>
+    <span class="divider"></span>
+    <button data-align="-1,0" data-tip="Align left · ⌥A" aria-label="Align left"><span class="icon">align_horizontal_left</span></button>
+    <button data-center="x" data-tip="Center horizontally · ⌥H" aria-label="Center horizontally"><span class="icon">align_horizontal_center</span></button>
+    <button data-align="1,0" data-tip="Align right · ⌥D" aria-label="Align right"><span class="icon">align_horizontal_right</span></button>
+    <button data-align="0,-1" data-tip="Align top · ⌥W" aria-label="Align top"><span class="icon">align_vertical_top</span></button>
+    <button data-center="y" data-tip="Center vertically · ⌥V" aria-label="Center vertically"><span class="icon">align_vertical_center</span></button>
+    <button data-align="0,1" data-tip="Align bottom · ⌥S" aria-label="Align bottom"><span class="icon">align_vertical_bottom</span></button>
+  </span>
+
+  <!-- Grouping needs two things to join, but ungrouping needs only the one group,
+       so this cannot ride along with the alignment buttons. -->
+  <span class="group" id="group-tools" hidden>
+    <span class="divider"></span>
+    <button id="group" aria-pressed="false" data-tip="Group · ⌘G" aria-label="Group"><span class="icon">cell_merge</span></button>
+  </span>
+
+  <span class="group" id="history-group">
+    <span class="divider"></span>
+    <button id="undo" data-tip="Undo · ⌘Z" aria-label="Undo"><span class="icon">undo</span></button>
+    <button id="redo" data-tip="Redo · ⇧⌘Z" aria-label="Redo"><span class="icon">redo</span></button>
+  </span>
+
+  <span class="group" id="view-group">
+    <span class="divider"></span>
+    <button id="fit" data-tip="Fit to content" aria-label="Fit to content"><span class="icon">fit_screen</span></button>
+    <button id="download" aria-expanded="false" data-tip="Download" aria-label="Download"><span class="icon">download</span></button>
+  </span>
+
+  <span class="divider"></span>
+
+  <span class="group" id="scene-group">
+    <button id="show-scene" aria-pressed="false" data-tip="Scene data" aria-label="Scene data"><span class="icon">data_object</span></button>
+  </span>
+  <button id="hide" data-tip="Hide toolbar · ⌘." aria-label="Hide toolbar"><span class="icon">keyboard_arrow_down</span></button>
+</div>
+
+<button id="peek" data-tip="Show toolbar · ⌘." aria-label="Show toolbar"><span class="icon">more_horiz</span></button>
+
+<div id="tip"></div>
+
+<div id="download-menu" hidden>
+  <button id="png"><span class="icon">file_png</span> PNG</button>
+  <button id="json"><span class="icon">file_json</span> JSON</button>
+  <button id="svg"><span class="icon">file_save</span> SVG</button>
+</div>
+
+<aside id="scene-panel" hidden>
+  <textarea id="scene-text" spellcheck="false"></textarea>
+  <div class="row">
+    <button id="dump">Refresh</button>
+    <button id="load">Load</button>
+    <button id="reset">Reset</button>
+  </div>
+</aside>
+
+<!-- The scene travels with the page. Any reader, human or machine, can find it
+     without running the script. Delete the script and the data survives. -->
+<script type="application/json" id="scene">
+  {"format":"minicanvas/1","items":[{"type":"text","color":"#17171a","size":16.8,"x":496.9,"y":328.2,"text":"Welcome to minicanvas.\n\nIt's a tiny but very functional canvas that can be inlined in any HTML page.\n\nLearn the shortcuts and then hide the toolbar for the best experience.\n\nHappy drawing!"}]}
+</script>
+
+<script>
+/* minicanvas core — a canvas, a scene, and the seams to hang everything else on.
+   Load this first, then whichever plugins you want, in the order listed in the
+   spec. Every file is plain top-level code: concatenate them, or use one script
+   tag each. No build step either way.
+
+   The core alone gives you a scene that renders and a view you can pan and zoom.
+   It knows the file format and nothing about tools. */
+const miniCanvasPlugins = [];   // held here, not looked up through the function
+const miniCanvasRegistry = [];  // { name, needs, setup }, in load order
+const instances = [];
+let active = null;
+
+function createMiniCanvas(canvasElement, options) {
+  const settings = options || {};
+
+  const core = {
+    canvas: canvasElement,
+    context: canvasElement.getContext('2d'),   // swapped out briefly when exporting
+    scene: { format: 'minicanvas/1', view: { x: 0, y: 0, scale: 1 }, items: [] },
+    tool: 'pan',
+    types: {},        // item type -> { draw, box, hit, move, svg }
+    toolKeys: {},     // letter -> tool name, filled in by whichever tools are loaded
+    api: {},          // what the caller gets back; plugins add their own methods
+    hooks: {}
+  };
+
+  core.strokeColor = '#17171a';   // what new items are made with; the pens plugin
+  core.strokeWidth = 3;           // adds the controls for changing them
+  core.strokeOpacity = 1;
+  core.fillOn = false;
+
+  // How hard a scroll or a pinch bites. Zoom is multiplicative, so this is an
+  // exponent: 4 means a given gesture covers four times the zoom range 1 did. Both
+  // gestures read it at the moment of use, so a page can retune it live.
+  core.zoomRate = 4;
+
+  // Stamp the current pen onto a new item. Absent fields mean the default, so a
+  // plain opaque unfilled shape writes nothing extra into the file.
+  core.applyPen = (item) => {
+    if (core.strokeOpacity < 1) item.opacity = core.strokeOpacity;
+    return item;
+  };
+
+  // Every window-level listener is recorded so destroy() can take them all back off
+  // again: a canvas in a single-page app should not outlive its element.
+  const cleanups = [];
+  core.listen = (target, type, handler, options) => {
+    target.addEventListener(type, handler, options);
+    cleanups.push(() => target.removeEventListener(type, handler, options));
+  };
+
+  // With several canvases on a page, keys belong to the one you last pointed at.
+  // With one, that question never comes up.
+  instances.push(core);
+  core.isActive = () => instances.length === 1 || active === core;
+
+  const HANDLE_SIZE = core.HANDLE_SIZE = 9;   // screen pixels, constant at every zoom
+  const GRAB_SLOP = core.GRAB_SLOP = 8;       // screen pixels of forgiveness when selecting
+
+  // --- hooks ----------------------------------------------------------------
+  // Handlers run in `order`, low first, and the first one to return true ends the
+  // round. The numbers below are the whole contract between plugins: keep them in
+  // one place so a new plugin can see where it lands without reading the others.
+  //
+  //   10  text caret placement      40  erase
+  //   20  text commit on any click  50  select
+  //   30  pan (space, pan tool)     90  tools that create things
+  core.on = (name, handler, order) => {
+    const list = core.hooks[name] || (core.hooks[name] = []);
+    list.push({ handler: handler, order: order || 50 });
+    list.sort((a, b) => a.order - b.order);
+  };
+
+  core.fire = (name, event, extra) => {
+    for (const entry of core.hooks[name] || []) {
+      if (entry.handler(event, extra)) return true;
+    }
+    return false;
+  };
+
+  core.emit = (name, detail) => {
+    core.canvas.dispatchEvent(new CustomEvent(name, { detail: detail }));
+  };
+
+  // History is a plugin. Without it, recording does nothing and every caller still
+  // reads the same: record a step, or take it back if the edit was a no-op. Either
+  // way this is the one place every recorded edit passes through, so it is where
+  // the change signal comes from.
+  core.record = () => {};
+  core.forget = () => {};
+  let edits = 0;
+  core.remember = () => { edits++; core.record(); };
+  core.changed = () => { edits++; };
+
+  const round = core.round = (value) => Math.round(value * 10) / 10;
+
+  // --- colour ---------------------------------------------------------------
+  // CSS cannot reach pixels drawn on a canvas, so the renderer reaches back out to
+  // CSS instead: it asks the page what a variable currently resolves to.
+  const PENS = core.PENS = {
+    '#17171a': '--pen-ink',   '#c0392b': '--pen-red',    '#d98c1f': '--pen-amber',
+    '#2e8b57': '--pen-green', '#1f6feb': '--pen-blue',   '#6b4de6': '--pen-violet'
+  };
+  let themeColors = new Map();
+  core.exporting = false;   // exports carry the document's own colours
+
+  core.cssColor = (name, fallback) => {
+    if (themeColors.has(name)) return themeColors.get(name);
+    let value = fallback;
+    try {
+      const found = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+      if (found) value = found;
+    } catch (error) { /* no stylesheet in reach: the fallback is already right */ }
+    themeColors.set(name, value);
+    return value;
+  };
+
+  core.themed = (color) => {
+    const name = PENS[String(color).toLowerCase()];
+    return (core.exporting || !name) ? color : core.cssColor(name, color);
+  };
+
+  if (typeof window.matchMedia === 'function') {
+    const dark = window.matchMedia('(prefers-color-scheme: dark)');
+    if (dark.addEventListener) dark.addEventListener('change', () => {
+      themeColors.clear();
+      core.requestRedraw();
+    });
+  }
+
+  // --- geometry -------------------------------------------------------------
+  core.screenPointOf = (event) => {
+    const bounds = core.canvas.getBoundingClientRect();
+    return { x: event.clientX - bounds.left, y: event.clientY - bounds.top };
+  };
+
+  const toWorld = core.toWorld = (screenPoint) => {
+    const view = core.scene.view;
+    return { x: screenPoint.x / view.scale + view.x, y: screenPoint.y / view.scale + view.y };
+  };
+
+  const viewCenter = core.viewCenter = () =>
+    toWorld({ x: core.canvas.clientWidth / 2, y: core.canvas.clientHeight / 2 });
+
+  core.zoomAround = (screenPoint, factor) => {
+    const view = core.scene.view;
+    const before = toWorld(screenPoint);
+    view.scale = Math.min(40, Math.max(0.05, view.scale * factor));
+    const after = toWorld(screenPoint);
+    view.x += before.x - after.x;
+    view.y += before.y - after.y;
+  };
+
+  const radiansOf = core.radiansOf = (degrees) => (degrees || 0) * Math.PI / 180;
+
+  const spin = core.spin = (x, y, center, radians) => {
+    const cos = Math.cos(radians), sin = Math.sin(radians);
+    const dx = x - center.x, dy = y - center.y;
+    return [center.x + dx * cos - dy * sin, center.y + dx * sin + dy * cos];
+  };
+
+  core.spinPoint = (point, center, degrees) => {
+    const spun = spin(point.x, point.y, center, radiansOf(degrees));
+    return { x: spun[0], y: spun[1] };
+  };
+
+  core.distanceToSegment = (px, py, x1, y1, x2, y2) => {
+    const dx = x2 - x1, dy = y2 - y1;
+    const lengthSquared = dx * dx + dy * dy;
+    const t = lengthSquared
+      ? Math.max(0, Math.min(1, ((px - x1) * dx + (py - y1) * dy) / lengthSquared))
+      : 0;
+    return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
+  };
+
+  // The upright box an item fills, before its own rotation. A type says how to
+  // measure itself; anything carrying x/y/w/h needs no help.
+  const itemBox = core.itemBox = (item) => {
+    const type = core.types[item.type];
+    if (type && type.box) return type.box(item);
+    return typeof item.w === 'number' ? { x: item.x, y: item.y, w: item.w, h: item.h } : null;
+  };
+
+  const itemCenter = core.itemCenter = (item) => {
+    const box = itemBox(item) || boundsOf([item]);
+    return box ? { x: box.x + box.w / 2, y: box.y + box.h / 2 } : { x: 0, y: 0 };
+  };
+
+  // A world point in an item's own upright frame, undoing its rotation. Rotation
+  // lives in the core because it lives in the format: a file with angles renders
+  // and hit-tests correctly whether or not the rotate plugin is loaded.
+  const toLocal = core.toLocal = (item, world) => {
+    if (!item.angle) return world;
+    const spun = spin(world.x, world.y, itemCenter(item), -radiansOf(item.angle));
+    return { x: spun[0], y: spun[1] };
+  };
+
+  const transformItem = core.transformItem = (item, transform) => {
+    const type = core.types[item.type];
+    if (type && type.move) { type.move(item, transform); return; }
+    if (typeof item.x === 'number') {
+      const moved = transform(item.x, item.y);
+      item.x = moved[0];
+      item.y = moved[1];
+    }
+  };
+
+  // How far an item's ink spills past its geometry. A stroke's centreline is not
+  // its edge: half the pen width sits outside on every side, which is why a box
+  // drawn on the raw bounds cuts through the middle of a thick line.
+  const inkPad = core.inkPad = (item) => {
+    const type = core.types[item.type];
+    return (type && type.ink) ? type.ink(item) : 0;
+  };
+
+  // What you can see, as opposed to where the coordinates are. Every item is grown
+  // by its own ink before the boxes are merged, since they do not all spill alike.
+  core.visualBounds = (items) => {
+    let box = null;
+    for (const item of items) {
+      const own = boundsOf([item]);
+      if (!own) continue;
+      const pad = inkPad(item);
+      const grown = { x: own.x - pad, y: own.y - pad, w: own.w + pad * 2, h: own.h + pad * 2 };
+      if (!box) { box = grown; continue; }
+      const right = Math.max(box.x + box.w, grown.x + grown.w);
+      const bottom = Math.max(box.y + box.h, grown.y + grown.h);
+      box.x = Math.min(box.x, grown.x);
+      box.y = Math.min(box.y, grown.y);
+      box.w = right - box.x;
+      box.h = bottom - box.y;
+    }
+    return box;
+  };
+
+  const boundsOf = core.boundsOf = (items) => {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    const stretch = (x, y) => {
+      minX = Math.min(minX, x); maxX = Math.max(maxX, x);
+      minY = Math.min(minY, y); maxY = Math.max(maxY, y);
+    };
+    for (const item of items) {
+      const type = core.types[item.type];
+      if (type && type.bounds) { type.bounds(item, stretch); continue; }
+      const box = itemBox(item);
+      if (!box) continue;
+      const right = box.x + box.w, bottom = box.y + box.h;
+      if (!item.angle) { stretch(box.x, box.y); stretch(right, bottom); continue; }
+      const middle = { x: box.x + box.w / 2, y: box.y + box.h / 2 };
+      const radians = radiansOf(item.angle);   // a tilted item needs all four corners
+      for (const corner of [[box.x, box.y], [right, box.y], [box.x, bottom], [right, bottom]]) {
+        const spun = spin(corner[0], corner[1], middle, radians);
+        stretch(spun[0], spun[1]);
+      }
+    }
+    // The true size, including zero: a flat line is genuinely no units tall, and
+    // rounding that up to 1 puts every box and every centre half a unit out.
+    return minX === Infinity ? null : { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+  };
+
+  // Topmost item under a world point, or -1. `radius` is forgiveness in world
+  // units: selecting is generous, erasing passes 0 so only visible ink counts.
+  core.itemIndexAt = (world, radius) => {
+    for (let i = core.scene.items.length - 1; i >= 0; i--) {
+      const item = core.scene.items[i];
+      const type = core.types[item.type];
+      if (!type || !type.hit) continue;
+      if (type.hit(item, toLocal(item, world), radius)) return i;
+    }
+    return -1;
+  };
+
+  // --- rendering ------------------------------------------------------------
+  let redrawQueued = false;
+  let announcedEdits = 0;
+
+  core.requestRedraw = () => {
+    if (redrawQueued) return;
+    redrawQueued = true;
+    requestAnimationFrame(() => { redrawQueued = false; redraw(); });
+  };
+
+  core.drawItem = (item) => {
+    const type = core.types[item.type];
+    if (!type || !type.draw) return;   // a newer file still round-trips through here
+    // Opacity is a core concern because it belongs to every type: one globalAlpha
+    // covers a stroke's ink, a shape's fill, and a photograph alike.
+    const framed = item.angle || item.opacity !== undefined;
+    if (framed) core.context.save();
+    if (item.opacity !== undefined) core.context.globalAlpha = item.opacity;
+    if (item.angle) {
+      const middle = itemCenter(item);
+      core.context.translate(middle.x, middle.y);
+      core.context.rotate(radiansOf(item.angle));
+      core.context.translate(-middle.x, -middle.y);
+    }
+    type.draw(item, core.context);
+    if (framed) core.context.restore();
+  };
+
+  function redraw() {
+    const context = core.context;
+    const ratio = window.devicePixelRatio || 1;
+    const width = core.canvas.clientWidth;
+    const height = core.canvas.clientHeight;
+    if (core.canvas.width !== Math.round(width * ratio)) {
+      core.canvas.width = Math.round(width * ratio);
+      core.canvas.height = Math.round(height * ratio);
+    }
+    context.setTransform(ratio, 0, 0, ratio, 0, 0);
+    context.clearRect(0, 0, width, height);
+    context.scale(core.scene.view.scale, core.scene.view.scale);
+    context.translate(-core.scene.view.x, -core.scene.view.y);
+
+    for (const item of core.scene.items) core.drawItem(item);
+    core.fire('overlay');
+    core.fire('afterdraw');
+    if (edits !== announcedEdits) { announcedEdits = edits; core.emit('change', core.api); }
+  }
+
+  // --- tools ----------------------------------------------------------------
+  core.spaceHeld = false;
+  core.toolKeys.h = 'pan';   // the hand tool; always available, needs no plugin
+
+  const applyCursor = core.applyCursor = () => {
+    core.canvas.style.cursor = (core.tool === 'pan' || core.spaceHeld) ? 'grab'
+      : core.tool === 'select' ? 'default'
+      : 'crosshair';
+  };
+
+  // keepTyping switches tools without finishing text being typed.
+  const setTool = core.setTool = (name, keepTyping) => {
+    if (name === core.tool) return;
+    core.fire('toolleave', name, keepTyping);
+    core.tool = name;
+    core.fire('toolenter', name);
+    applyCursor();
+    core.requestRedraw();
+    // Whoever drew the toolbar owns its pressed states, so say the tool changed
+    // rather than reaching out of the canvas to update buttons.
+    core.emit('toolchange', name);
+  };
+
+  // --- pointer --------------------------------------------------------------
+  const activePointers = new Map();
+  let isPanning = false;
+  let lastPinch = null;
+  core.lastScreenPoint = null;
+  core.hoverPoint = null;
+
+  core.canvas.addEventListener('pointerdown', (event) => {
+    active = core;   // whichever canvas you last touched owns the keyboard
+    core.canvas.setPointerCapture(event.pointerId);
+    const screenPoint = core.screenPointOf(event);
+    activePointers.set(event.pointerId, screenPoint);
+    core.lastScreenPoint = screenPoint;
+
+    if (activePointers.size === 2) {   // second finger down: pinch, not draw
+      core.fire('cancel');
+      lastPinch = null;
+      core.requestRedraw();
+      return;
+    }
+    core.fire('pointerdown', event, { screenPoint: screenPoint, world: toWorld(screenPoint) });
+  });
+
+  // Panning is core, so it is always available: hold space from any tool.
+  core.on('pointerdown', (event) => {
+    if (core.tool !== 'pan' && !core.spaceHeld && event.button !== 1) return false;
+    isPanning = true;
+    return true;
+  }, 30);
+
+  core.canvas.addEventListener('pointermove', (event) => {
+    core.hoverPoint = core.screenPointOf(event);   // remembered even when nothing is pressed
+    if (!activePointers.has(event.pointerId)) {
+      // Nothing is pressed, so this is a hover. Plugins that care get told; the
+      // pointer handlers below only run for an actual drag.
+      core.fire('hover', event, { screenPoint: core.hoverPoint, world: toWorld(core.hoverPoint) });
+      return;
+    }
+    const screenPoint = core.hoverPoint;
+    activePointers.set(event.pointerId, screenPoint);
+
+    if (activePointers.size >= 2) { pinch(); core.lastScreenPoint = screenPoint; return; }
+
+    if (isPanning) {
+      core.scene.view.x -= (screenPoint.x - core.lastScreenPoint.x) / core.scene.view.scale;
+      core.scene.view.y -= (screenPoint.y - core.lastScreenPoint.y) / core.scene.view.scale;
+      core.requestRedraw();
+    } else {
+      core.fire('pointermove', event, {
+        screenPoint: screenPoint,
+        world: toWorld(screenPoint),
+        from: toWorld(core.lastScreenPoint)
+      });
+    }
+    core.lastScreenPoint = screenPoint;
+  });
+
+  function endPointer(event) {
+    activePointers.delete(event.pointerId);
+    if (activePointers.size < 2) lastPinch = null;
+    if (activePointers.size === 0) {
+      isPanning = false;
+      core.fire('pointerup', event);
+      core.requestRedraw();
+    }
+  }
+  // Direct, like the other canvas listeners: those live and die with the element,
+  // and only window-level ones need taking back off in destroy().
+  core.canvas.addEventListener('pointerleave', (event) => core.fire('hover', event, null));
+  core.canvas.addEventListener('pointerup', endPointer);
+  core.canvas.addEventListener('pointercancel', endPointer);
+
+  function pinch() {
+    const [a, b] = [...activePointers.values()];
+    const distance = Math.hypot(a.x - b.x, a.y - b.y);
+    const middle = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    if (lastPinch && lastPinch.distance > 0) {
+      // Raising the finger-spread ratio to the same exponent keeps the two
+      // gestures in step: pinching and scrolling reach a given zoom together.
+      core.zoomAround(middle, Math.pow(distance / lastPinch.distance, core.zoomRate));
+      core.scene.view.x -= (middle.x - lastPinch.middle.x) / core.scene.view.scale;
+      core.scene.view.y -= (middle.y - lastPinch.middle.y) / core.scene.view.scale;
+      core.requestRedraw();
+    }
+    lastPinch = { distance: distance, middle: middle };
+  }
+
+  core.canvas.addEventListener('wheel', (event) => {
+    event.preventDefault();
+    if (event.ctrlKey || event.metaKey) {          // trackpad pinch and ⌘-wheel
+      core.zoomAround(core.screenPointOf(event), Math.exp(-event.deltaY / 200 * core.zoomRate));
+    } else {
+      core.scene.view.x += event.deltaX / core.scene.view.scale;
+      core.scene.view.y += event.deltaY / core.scene.view.scale;
+    }
+    core.requestRedraw();
+  }, { passive: false });
+
+  // --- keyboard -------------------------------------------------------------
+  core.listen(window, 'keydown', (event) => {
+    const tag = event.target && event.target.tagName;
+    if (tag === 'TEXTAREA' || tag === 'INPUT') return;
+    if (!core.isActive()) return;   // one keystroke, one canvas
+
+    // Space pans from anywhere, including while a toolbar button holds focus.
+    // Those buttons still answer to Enter, which is how they respond anyway.
+    if (core.fire('typing', event)) return;
+    if (event.code === 'Space') {
+      core.spaceHeld = true;
+      applyCursor();
+      event.preventDefault();
+      return;
+    }
+    if (!event.ctrlKey && !event.metaKey && !event.altKey) {
+      const shortcut = core.toolKeys[(event.key || '').toLowerCase()];
+      if (shortcut) { setTool(shortcut); event.preventDefault(); return; }
+    }
+    core.fire('keydown', event);
+  });
+
+  core.listen(window, 'keyup', (event) => {
+    if (event.code === 'Space') { core.spaceHeld = false; applyCursor(); }
+  });
+  // Alt-tabbing away swallows the keyup, which would leave space stuck down.
+  core.listen(window, 'blur', () => { core.spaceHeld = false; applyCursor(); });
+
+  if (window.ResizeObserver) {
+    const observer = new ResizeObserver(core.requestRedraw);
+    observer.observe(core.canvas);
+    cleanups.push(() => observer.disconnect());
+  }
+  core.listen(window, 'resize', core.requestRedraw);
+
+  // --- scene in, scene out --------------------------------------------------
+  core.fit = (padding) => {
+    const box = boundsOf(core.scene.items);
+    if (!box) return;
+    const gap = padding == null ? 24 : padding;
+    // A flat or upright box has no extent on one axis, so that axis sets no limit.
+    const across = box.w ? (core.canvas.clientWidth - gap * 2) / box.w : Infinity;
+    const down = box.h ? (core.canvas.clientHeight - gap * 2) / box.h : Infinity;
+    const scale = Math.min(across, down);
+    core.scene.view.scale = Math.min(40, Math.max(0.05, scale === Infinity ? 1 : scale));
+    core.scene.view.x = box.x + box.w / 2 - core.canvas.clientWidth / 2 / core.scene.view.scale;
+    core.scene.view.y = box.y + box.h / 2 - core.canvas.clientHeight / 2 / core.scene.view.scale;
+    core.requestRedraw();
+  };
+
+  // Which plugin draws which type, for the warning below and nothing else. A type
+  // that is missing is by definition not around to introduce itself.
+  // These name the item files, not the tool files: drawing is what is missing.
+  const DRAWN_BY = { stroke: 'item-stroke', rect: 'item-shapes', oval: 'item-shapes',
+                     text: 'item-text', image: 'item-image' };
+
+  // A scene full of items nothing can draw looks exactly like a broken page. Say so
+  // once, at load, rather than leaving someone staring at an empty canvas.
+  function warnAboutUnrenderable() {
+    const missing = new Set();
+    for (const item of core.scene.items) {
+      const type = core.types[item.type];
+      if (!type || !type.draw) missing.add(item.type);
+    }
+    if (!missing.size || typeof console === 'undefined') return;
+    const plugins = [...missing].map((type) => DRAWN_BY[type]).filter(Boolean);
+    console.warn('minicanvas: nothing loaded can draw ' + [...missing].join(', ')
+      + '. The items are kept and will be written back out, but they will not appear.'
+      + (plugins.length ? ' Add: ' + [...new Set(plugins)].map((p) => 'minicanvas-' + p + '.js').join(', ') : ''));
+  }
+
+  core.load = (data) => {
+    const parsed = typeof data === 'string' ? JSON.parse(data) : data;
+    core.scene = { format: 'minicanvas/1', view: { x: 0, y: 0, scale: 1 }, items: [], ...parsed };
+    core.scene.view.scale = core.scene.view.scale || 1;
+    edits = announcedEdits = 0;   // a fresh document has no unsaved edits
+    core.fire('load');
+    warnAboutUnrenderable();
+    core.requestRedraw();
+    return core.scene;
+  };
+
+  // Pretty JSON, but number arrays stay on one line so a stroke reads as a stroke.
+  core.toText = () => JSON.stringify(core.scene, null, 2)
+    .replace(/\[[\d.,\s-]*\]/g, (block) => '[' + block.slice(1, -1).trim().replace(/\s+/g, ' ') + ']');
+
+  Object.assign(core.api, {
+    // Listen for 'change' (an edit was recorded), 'toolchange', or 'selectionchange'.
+    on: (type, handler) => { core.canvas.addEventListener(type, handler); return core.api; },
+    off: (type, handler) => { core.canvas.removeEventListener(type, handler); return core.api; },
+    destroy: () => {
+      cleanups.forEach((undo) => undo());
+      cleanups.length = 0;
+      const at = instances.indexOf(core);
+      if (at >= 0) instances.splice(at, 1);
+      if (active === core) active = null;
+    },
+    load: core.load,
+    scene: () => core.scene,
+    toText: core.toText,
+    fit: core.fit,
+    viewCenter: viewCenter,
+    redraw: core.requestRedraw,
+    tool: () => core.tool,
+    setTool: setTool,
+    core: core          // plugins are ordinary code; so is reaching past the API
+  });
+
+  // Closing over the list rather than reading createMiniCanvas.plugins means a
+  // wrapper or a re-export of the factory still builds a working canvas.
+  for (const plugin of settings.plugins || miniCanvasPlugins) plugin(core);
+
+  applyCursor();
+  core.requestRedraw();
+  return core.api;
+}
+
+createMiniCanvas.plugins = miniCanvasPlugins;
+
+/* ---------------------------------------------------------------------------
+   The public API. Everything above is the machine; this is the handle.
+
+     MiniCanvas.mount('#board', { scene: '#scene', features: 'viewer' })
+
+   A plugin file registers itself by name, and says what it cannot work without.
+   Asking for a feature always brings its dependencies, so nobody has to remember
+   that transform needs select.
+--------------------------------------------------------------------------- */
+createMiniCanvas.plugin = function (name, needs, setup) {
+  if (typeof needs === 'function') { setup = needs; needs = []; }
+  miniCanvasRegistry.push({ name: name, needs: needs, setup: setup });
+  miniCanvasPlugins.push(setup);
+  return createMiniCanvas;
+};
+
+// Names are forgiving: 'text' finds item-text and tool-text, 'draw' finds
+// tool-draw. Ask for what you mean, not for the filename.
+function matchFeature(name) {
+  const found = miniCanvasRegistry.filter((entry) =>
+    entry.name === name || entry.name.endsWith('-' + name));
+  if (!found.length) {
+    throw new Error('minicanvas: no feature called "' + name + '". Loaded: '
+      + miniCanvasRegistry.map((entry) => entry.name).join(', '));
+  }
+  return found;
+}
+
+function chooseFeatures(features) {
+  if (features === undefined || features === null || features === 'all') return miniCanvasRegistry.slice();
+  // A viewer is every renderer and no tool: it draws what it is given and makes
+  // nothing. There is no read-only flag anywhere, because there is nothing to turn off.
+  if (features === 'viewer') return miniCanvasRegistry.filter((entry) => entry.name.startsWith('item-'));
+
+  if (Array.isArray(features)) {
+    const wanted = [];
+    const add = (entry) => {
+      if (wanted.includes(entry)) return;
+      entry.needs.forEach((need) => matchFeature(need).forEach(add));
+      wanted.push(entry);
+    };
+    features.forEach((name) => matchFeature(name).forEach(add));
+    return miniCanvasRegistry.filter((entry) => wanted.includes(entry));   // load order wins
+  }
+
+  if (features.without) {
+    const dropped = new Set();
+    features.without.forEach((name) => matchFeature(name).forEach((entry) => dropped.add(entry.name)));
+    // Dropping something drops whatever leans on it, however far down that goes.
+    let settled = false;
+    while (!settled) {
+      settled = true;
+      for (const entry of miniCanvasRegistry) {
+        if (dropped.has(entry.name)) continue;
+        if (entry.needs.some((need) => matchFeature(need).every((dep) => dropped.has(dep.name)))) {
+          dropped.add(entry.name);
+          settled = false;
+        }
+      }
+    }
+    return miniCanvasRegistry.filter((entry) => !dropped.has(entry.name));
+  }
+  throw new Error('minicanvas: features must be "all", "viewer", an array, or { without: [...] }');
+}
+
+// A scene can be the data itself, JSON text, or a selector pointing at a
+// <script type="application/json"> block on the page.
+function readScene(scene) {
+  if (typeof scene !== 'string') return scene;
+  const text = scene.trim();
+  if (text.startsWith('{')) return text;
+  const node = document.querySelector(scene);
+  if (!node) throw new Error('minicanvas: nothing matched the scene selector "' + scene + '"');
+  return node.textContent;
+}
+
+createMiniCanvas.mount = function (target, options) {
+  const settings = options || {};
+  const element = typeof target === 'string' ? document.querySelector(target) : target;
+  if (!element) throw new Error('minicanvas: nothing matched "' + target + '"');
+  const board = createMiniCanvas(element, {
+    plugins: chooseFeatures(settings.features).map((entry) => entry.setup)
+  });
+  if (settings.scene !== undefined) board.load(readScene(settings.scene));
+  if (settings.tool) board.setTool(settings.tool);
+  if (settings.fit) board.fit(typeof settings.fit === 'number' ? settings.fit : undefined);
+  return board;
+};
+
+// What this page has loaded, which is also the list of names mount() will take.
+Object.defineProperty(createMiniCanvas, 'features', {
+  get: () => miniCanvasRegistry.map((entry) => entry.name)
+});
+
+if (typeof window !== 'undefined') window.MiniCanvas = createMiniCanvas;
+
+/* pens — the current colour, width, opacity, and fill, and the keys that change
+   them. Whatever is selected changes with the pen, so one key does both jobs.
+   Needs: core. Better with: select (restyling what is picked).
+   Split out because a read-only build needs none of it. */
+createMiniCanvas.plugin('pens', [], function (core) {
+  // The four fade steps, plus opaque so there is a way back to it.
+  const OPACITIES = [1, 0.7, 0.5, 0.3, 0.1];
+  const WIDTHS = [1, 3, 8];
+
+  const selected = () => core.selection ? [...core.selection] : [];
+
+  // One place for "change the pen, and change what is picked with it". Every edit
+  // to a selection goes through here so the undo step and the redraw are not
+  // forgotten in one of four handlers.
+  function apply(change) {
+    const items = selected();
+    if (!items.length) return;
+    let touched = false;
+    core.remember();
+    for (const item of items) if (change(item)) touched = true;
+    if (!touched) core.forget(); else core.requestRedraw();
+  }
+
+  core.api.setStroke = (color, width) => {
+    if (color) core.strokeColor = color;
+    if (width) core.strokeWidth = width;
+    apply((item) => {
+      let changed = false;
+      // An image has neither a colour nor a width, so nothing to restyle.
+      if (color && 'color' in item) { item.color = color; changed = true; }
+      if (color && item.fill) { item.fill = color; changed = true; }   // a filled shape stays one colour
+      if (width && typeof item.width === 'number') { item.width = width; changed = true; }
+      return changed;
+    });
+  };
+
+  // Fill is a colour, not a flag: absent means unfilled, so a plain outline writes
+  // nothing extra into the file.
+  const toggleFill = core.api.toggleFill = () => {
+    const shapes = selected().filter((item) => item.type === 'rect' || item.type === 'oval');
+    const filling = shapes.length ? !shapes.some((item) => item.fill) : !core.fillOn;
+    core.fillOn = filling;
+    apply((item) => {
+      if (item.type !== 'rect' && item.type !== 'oval') return false;
+      if (filling) item.fill = item.color; else delete item.fill;
+      return true;
+    });
+    core.emit('penchange', penState());
+    return filling;
+  };
+
+  const cycleOpacity = core.api.cycleOpacity = () => {
+    const at = OPACITIES.indexOf(core.strokeOpacity);
+    core.strokeOpacity = OPACITIES[(at + 1) % OPACITIES.length];
+    apply((item) => {
+      // Full opacity is the default, so it is stored as nothing at all.
+      if (core.strokeOpacity < 1) item.opacity = core.strokeOpacity;
+      else delete item.opacity;
+      return true;
+    });
+    core.emit('penchange', penState());
+    return core.strokeOpacity;
+  };
+
+  const cycleWidth = core.api.cycleWidth = () => {
+    const inked = selected().filter((item) => typeof item.width === 'number');
+    // Follow what is selected when there is something, so the cycle starts from
+    // the weight you are looking at rather than from the pen's own idea.
+    const from = inked.length ? inked[0].width : core.strokeWidth;
+    const next = WIDTHS[(WIDTHS.indexOf(from) + 1) % WIDTHS.length];
+    core.api.setStroke(null, next);
+    core.emit('penchange', penState());
+    return next;
+  };
+
+  const cycleColor = core.api.cycleColor = () => {
+    const pens = Object.keys(core.PENS);
+    const items = selected();
+    // Follow whatever is selected if anything is, so the cycle picks up where the
+    // thing you are looking at already sits.
+    const from = items.length && items[0].color ? items[0].color : core.strokeColor;
+    const next = pens[(pens.indexOf(String(from).toLowerCase()) + 1) % pens.length];
+    core.api.setStroke(next, null);
+    core.emit('penchange', penState());
+    return next;
+  };
+
+  function penState() {
+    return { color: core.strokeColor, width: core.strokeWidth,
+             opacity: core.strokeOpacity, fill: core.fillOn };
+  }
+  core.api.pen = penState;
+
+  const KEYS = { f: toggleFill, g: cycleOpacity, c: cycleColor, w: cycleWidth };
+
+  core.on('keydown', (event) => {
+    if (event.ctrlKey || event.metaKey || event.altKey) return false;
+    const action = KEYS[(event.key || '').toLowerCase()];
+    if (!action) return false;
+    action();
+    event.preventDefault();
+    return true;
+  });
+});
+
+/* item: stroke — how a freehand stroke draws, measures, and exports. No tool: a
+   read-only build wants this without the pen.
+   Needs: core. */
+createMiniCanvas.plugin('item-stroke', [], function (core) {
+  core.types.stroke = {
+    draw(stroke, context) {
+      const points = stroke.points;
+      if (points.length < 2) return;
+      context.strokeStyle = core.themed(stroke.color);
+      context.lineWidth = stroke.width;
+      context.lineCap = 'round';
+      context.lineJoin = 'round';
+      context.beginPath();
+      context.moveTo(points[0], points[1]);
+      // A single tap is a 0.01-long line, not a special-cased dot.
+      if (points.length === 2) context.lineTo(points[0] + 0.01, points[1]);
+      for (let i = 2; i < points.length; i += 2) context.lineTo(points[i], points[i + 1]);
+      context.stroke();
+    },
+
+    // Round caps and joins, so the ink reaches half the pen width in every direction.
+    ink: (stroke) => stroke.width / 2,
+
+    // A bag of points has no box of its own, and rotates by moving them.
+    bounds(stroke, stretch) {
+      for (let i = 0; i < stroke.points.length; i += 2) stretch(stroke.points[i], stroke.points[i + 1]);
+    },
+
+    move(stroke, transform) {
+      for (let i = 0; i < stroke.points.length; i += 2) {
+        const moved = transform(stroke.points[i], stroke.points[i + 1]);
+        stroke.points[i] = moved[0];
+        stroke.points[i + 1] = moved[1];
+      }
+    },
+
+    hit(stroke, local, radius) {
+      const points = stroke.points;
+      const reach = radius + stroke.width / 2;
+      if (points.length === 2) return Math.hypot(points[0] - local.x, points[1] - local.y) < reach;
+      for (let j = 0; j + 3 < points.length; j += 2) {
+        if (core.distanceToSegment(local.x, local.y, points[j], points[j + 1],
+                                   points[j + 2], points[j + 3]) < reach) return true;
+      }
+      return false;
+    },
+
+    // Strokes are box-selected by their points, not their bounding box, so a
+    // marquee beside a long diagonal misses it.
+    within(stroke, inside) {
+      for (let i = 0; i < stroke.points.length; i += 2) {
+        if (inside(stroke.points[i], stroke.points[i + 1])) return true;
+      }
+      return false;
+    },
+
+    svg(stroke, escape) {
+      const pairs = [];
+      for (let i = 0; i < stroke.points.length; i += 2) pairs.push(stroke.points[i] + ',' + stroke.points[i + 1]);
+      return `<polyline points="${pairs.join(' ')}" fill="none" stroke="${escape(stroke.color)}"`
+           + ` stroke-width="${stroke.width}" stroke-linecap="round" stroke-linejoin="round"/>`;
+    }
+  };
+});
+
+/* item: shapes — how rectangles and ovals draw, hit, and export. No tools.
+   Needs: core. */
+createMiniCanvas.plugin('item-shapes', [], function (core) {
+  const CORNER_RADIUS = 6;   // world units, a renderer choice and not stored
+  // Corners stay gentle, and shrink out of the way on small rectangles.
+  const cornerRadiusOf = (shape) => Math.max(0, Math.min(CORNER_RADIUS, shape.w / 4, shape.h / 4));
+
+  // Unfilled shapes answer to their outline only, so a big rectangle drawn around
+  // other work does not swallow every click inside it.
+  function nearEdge(shape, local, reach) {
+    if (shape.type === 'rect') {
+      const outside = local.x < shape.x - reach || local.x > shape.x + shape.w + reach
+                   || local.y < shape.y - reach || local.y > shape.y + shape.h + reach;
+      const inside = local.x > shape.x + reach && local.x < shape.x + shape.w - reach
+                  && local.y > shape.y + reach && local.y < shape.y + shape.h - reach;
+      return !outside && !inside;
+    }
+    const centerX = shape.x + shape.w / 2, centerY = shape.y + shape.h / 2;
+    const radiusX = shape.w / 2 || 0.01, radiusY = shape.h / 2 || 0.01;
+    const normalised = Math.hypot((local.x - centerX) / radiusX, (local.y - centerY) / radiusY);
+    // Scaling the normalised distance by the smaller radius approximates the real
+    // distance to the ellipse. Close enough for a 9px grab zone.
+    return Math.abs(normalised - 1) * Math.min(radiusX, radiusY) < reach;
+  }
+
+  const shapeType = {
+    draw(shape, context) {
+      context.strokeStyle = core.themed(shape.color);
+      context.lineWidth = shape.width;
+      context.lineJoin = 'round';
+      context.beginPath();
+      if (shape.type === 'rect') {
+        // arcTo rather than roundRect, which only landed in browsers around 2023.
+        const radius = cornerRadiusOf(shape);
+        const right = shape.x + shape.w, bottom = shape.y + shape.h;
+        context.moveTo(shape.x + radius, shape.y);
+        context.arcTo(right, shape.y, right, bottom, radius);
+        context.arcTo(right, bottom, shape.x, bottom, radius);
+        context.arcTo(shape.x, bottom, shape.x, shape.y, radius);
+        context.arcTo(shape.x, shape.y, right, shape.y, radius);
+        context.closePath();
+      } else {
+        context.ellipse(shape.x + shape.w / 2, shape.y + shape.h / 2,
+                        shape.w / 2, shape.h / 2, 0, 0, Math.PI * 2);
+      }
+      // Filled or outlined, never both. Drawing an outline over a fill of the same
+      // colour doubles up along the edge, which shows as a darker rim as soon as
+      // the item is anything less than opaque.
+      if (shape.fill) {
+        context.fillStyle = core.themed(shape.fill);
+        context.fill();
+      } else {
+        context.stroke();
+      }
+    },
+    // A filled shape has no stroke, so nothing spills past its box. An outlined one
+    // carries half its pen width outside the path, same as a line.
+    ink: (shape) => shape.fill ? 0 : shape.width / 2,
+
+    // A filled shape catches clicks anywhere inside; an outline only on its edge.
+    hit(shape, local, radius) {
+      const reach = radius + shape.width / 2;
+      if (!shape.fill) return nearEdge(shape, local, reach);
+      if (shape.type === 'rect') {
+        return local.x >= shape.x - reach && local.x <= shape.x + shape.w + reach
+            && local.y >= shape.y - reach && local.y <= shape.y + shape.h + reach;
+      }
+      const rx = shape.w / 2 || 0.01, ry = shape.h / 2 || 0.01;
+      return Math.hypot((local.x - shape.x - rx) / rx, (local.y - shape.y - ry) / ry) <= 1 + reach / Math.min(rx, ry);
+    },
+    scale(shape, scaleX, scaleY) { shape.w *= scaleX; shape.h *= scaleY; },
+    svg(shape, escape) {
+      // Same rule as the canvas: a filled shape carries no stroke at all.
+      const paint = shape.fill
+        ? `fill="${escape(shape.fill)}" stroke="none"`
+        : `fill="none" stroke="${escape(shape.color)}" stroke-width="${shape.width}"`;
+      if (shape.type === 'rect') {
+        return `<rect x="${shape.x}" y="${shape.y}" width="${shape.w}" height="${shape.h}"`
+             + ` rx="${cornerRadiusOf(shape)}" ${paint}`;
+      }
+      return `<ellipse cx="${shape.x + shape.w / 2}" cy="${shape.y + shape.h / 2}"`
+           + ` rx="${shape.w / 2}" ry="${shape.h / 2}" ${paint}`;
+    }
+  };
+  core.types.rect = shapeType;
+  core.types.oval = shapeType;
+});
+
+/* item: text — how a text item draws, measures, and exports. Multiple lines, no
+   editor: this is what a read-only build needs.
+   Needs: core. */
+createMiniCanvas.plugin('item-text', [], function (core) {
+  const TEXT_SIZE = core.TEXT_SIZE = 24;   // world units, the size new text starts at
+  const FONT = core.TEXT_FONT = 'sans-serif';   // a family every renderer will still have
+  const LINE_SPACING = 1.25;   // a renderer choice, like the corner radius: not stored
+
+  const fontOf = core.fontOf = (item) => (item.size || TEXT_SIZE) + 'px ' + FONT;
+  const lineHeight = core.lineHeight = (item) => (item.size || TEXT_SIZE) * LINE_SPACING;
+  const linesOf = core.textLines = (item) => String(item.text || '').split('\n');
+
+  // Width of a piece of one line. The editor needs this to place a caret, and the
+  // box needs it to know how wide the widest line runs.
+  const measureLine = core.measureLine = (item, text) => {
+    core.context.font = fontOf(item);
+    return core.context.measureText(text).width;
+  };
+
+  // Where an index into the whole string lands: which line, and how far along it.
+  core.caretSpot = (item, index) => {
+    const before = String(item.text || '').slice(0, index);
+    const row = (before.match(/\n/g) || []).length;
+    const column = before.length - (before.lastIndexOf('\n') + 1);
+    const line = linesOf(item)[row] || '';
+    return { row: row, column: column, x: measureLine(item, line.slice(0, column)),
+             y: row * lineHeight(item) };
+  };
+
+  // The index where a given row and column falls, clamped to what exists.
+  core.caretIndex = (item, row, column) => {
+    const lines = linesOf(item);
+    const atRow = Math.max(0, Math.min(lines.length - 1, row));
+    let index = 0;
+    for (let i = 0; i < atRow; i++) index += lines[i].length + 1;
+    return index + Math.max(0, Math.min(lines[atRow].length, column));
+  };
+
+  core.types.text = {
+    box(item) {
+      const lines = linesOf(item);
+      let width = 0;
+      for (const line of lines) width = Math.max(width, measureLine(item, line));
+      return { x: item.x, y: item.y, w: width, h: lines.length * lineHeight(item) };
+    },
+    hit(item, local, radius) {
+      const box = core.types.text.box(item);
+      return local.x >= box.x - radius && local.x <= box.x + box.w + radius
+          && local.y >= box.y - radius && local.y <= box.y + box.h + radius;
+    },
+    scale(item, scaleX, scaleY) { item.size *= (scaleX + scaleY) / 2; },
+    draw(item, context) {
+      context.textBaseline = 'top';
+      // The editor draws selected runs under the glyphs and a caret over them.
+      // Without it loaded these fire into nothing, which is the whole point.
+      core.fire('textunder', item, context);
+      context.fillStyle = core.themed(item.color);
+      context.font = fontOf(item);
+      const step = lineHeight(item);
+      linesOf(item).forEach((line, row) => context.fillText(line, item.x, item.y + row * step));
+      core.fire('textover', item, context);
+    },
+    svg(item, escape) {
+      const size = item.size || TEXT_SIZE;
+      // Canvas draws text from its top, SVG from its baseline. 0.8 of the size is
+      // the usual gap between the two, and it keeps the export dependency-free.
+      return `<text x="${item.x}" y="${core.round(item.y + size * 0.8)}" font-family="${FONT}"`
+           + ` font-size="${size}" fill="${escape(item.color)}"`;
+    },
+    // One tspan per line, each pushed down by a whole line from the one before.
+    svgBody: (item, escape) => linesOf(item).map((line, row) =>
+      `<tspan x="${item.x}" dy="${row ? core.round(lineHeight(item)) : 0}">${escape(line)}</tspan>`).join(''),
+    svgTag: 'text'
+  };
+
+  // Building a text item is not editing it: the clipboard uses this to turn pasted
+  // prose into something the scene can hold.
+  core.newText = (world, text) => {
+    const item = core.applyPen({ type: 'text', color: core.strokeColor, size: TEXT_SIZE,
+                                 x: 0, y: 0, text: text });
+    const box = core.types.text.box(item);
+    item.x = core.round(world.x - box.w / 2);
+    item.y = core.round(world.y - box.h / 2);
+    return item;
+  };
+});
+
+/* item: image — how an image draws and hits. No inserting: that is editing.
+   Needs: core. */
+createMiniCanvas.plugin('item-image', [], function (core) {
+  const imageCache = core.imageCache = new Map();   // src -> Image
+  function imageOf(src) {
+    let image = imageCache.get(src);
+    if (!image) {
+      image = new Image();
+      image.onload = core.requestRedraw;
+      image.src = src;
+      imageCache.set(src, image);
+    }
+    return image.complete && image.naturalWidth ? image : null;
+  }
+
+  core.types.image = {
+    draw(item, context) {
+      const image = imageOf(item.src);
+      if (image) context.drawImage(image, item.x, item.y, item.w, item.h);
+    },
+    // Solid, unlike the outline shapes: anywhere inside counts.
+    hit: (item, local, radius) =>
+      local.x >= item.x - radius && local.x <= item.x + item.w + radius &&
+      local.y >= item.y - radius && local.y <= item.y + item.h + radius,
+    scale(item, scaleX, scaleY) { item.w *= scaleX; item.h *= scaleY; },
+    svg: (item, escape) =>
+      `<image x="${item.x}" y="${item.y}" width="${item.w}" height="${item.h}" href="${escape(item.src)}"`
+  };
+});
+
+/* tool: draw — the pen that makes strokes.
+   Needs: core, item-stroke. */
+createMiniCanvas.plugin('tool-draw', ['item-stroke'], function (core) {
+  let currentStroke = null;
+
+  core.toolKeys.d = 'draw';
+  core.on('pointerdown', (event, at) => {
+    if (core.tool !== 'draw') return false;
+    core.remember();
+    currentStroke = core.applyPen({
+      type: 'stroke',
+      color: core.strokeColor,
+      width: core.strokeWidth,
+      points: [core.round(at.world.x), core.round(at.world.y)]
+    });
+    core.scene.items.push(currentStroke);
+    core.requestRedraw();
+    return true;
+  }, 90);
+
+  core.on('pointermove', (event, at) => {
+    if (!currentStroke) return false;
+    const points = currentStroke.points;
+    const moved = Math.hypot(at.world.x - points[points.length - 2], at.world.y - points[points.length - 1]);
+    // Sampled in screen space, so detail stays the same at any zoom.
+    if (moved * core.scene.view.scale > 1.5) {
+      points.push(core.round(at.world.x), core.round(at.world.y));
+      core.requestRedraw();
+    }
+    return true;
+  }, 90);
+
+  core.on('pointerup', () => { currentStroke = null; return false; });
+  core.on('cancel', () => {
+    if (currentStroke && currentStroke.points.length <= 4) core.scene.items.pop();
+    currentStroke = null;
+    return false;
+  });
+});
+
+/* tool: shapes — dragging out a rectangle or an oval.
+   Needs: core, item-shapes. */
+createMiniCanvas.plugin('tool-shapes', ['item-shapes'], function (core) {
+  let currentShape = null;
+  let shapeOrigin = null;
+
+  core.toolKeys.r = 'rect';
+  core.toolKeys.o = 'oval';
+  // Shapes are stored corner-first with positive size, whichever way you drag.
+  // Shift squares them off the longer edge, so the corner you are holding wins.
+  function sizeShape(world, square) {
+    let dx = world.x - shapeOrigin.x;
+    let dy = world.y - shapeOrigin.y;
+    if (square) {
+      const size = Math.max(Math.abs(dx), Math.abs(dy));
+      dx = dx < 0 ? -size : size;
+      dy = dy < 0 ? -size : size;
+    }
+    currentShape.x = core.round(Math.min(shapeOrigin.x, shapeOrigin.x + dx));
+    currentShape.y = core.round(Math.min(shapeOrigin.y, shapeOrigin.y + dy));
+    currentShape.w = core.round(Math.abs(dx));
+    currentShape.h = core.round(Math.abs(dy));
+    core.requestRedraw();
+  }
+
+  core.on('pointerdown', (event, at) => {
+    if (core.tool !== 'rect' && core.tool !== 'oval') return false;
+    core.remember();
+    shapeOrigin = at.world;
+    currentShape = core.applyPen({ type: core.tool, color: core.strokeColor,
+                                   width: core.strokeWidth, x: core.round(at.world.x),
+                                   y: core.round(at.world.y), w: 0, h: 0 });
+    if (core.fillOn) currentShape.fill = core.strokeColor;
+    core.scene.items.push(currentShape);
+    core.requestRedraw();
+    return true;
+  }, 90);
+
+  core.on('pointermove', (event, at) => {
+    if (!currentShape) return false;
+    sizeShape(at.world, event.shiftKey);
+    return true;
+  }, 90);
+
+  core.on('pointerup', () => {
+    if (!currentShape) return false;
+    // A click with no drag leaves nothing behind, and costs no undo step.
+    if (!currentShape.w && !currentShape.h) { core.scene.items.pop(); core.forget(); }
+    currentShape = null;
+    return false;
+  });
+  core.on('cancel', () => { currentShape = null; return false; });
+  core.on('toolleave', () => { currentShape = null; return false; });
+});
+
+/* tool: text — the editor: caret, selected runs, blink, double click to reopen.
+   The largest plugin, and the first one a read-only build leaves out.
+   Needs: core, item-text. Better with: select (double click to reopen). */
+createMiniCanvas.plugin('tool-text', ['item-text'], function (core) {
+  const TEXT_SIZE = core.TEXT_SIZE;
+
+  let editing = null;        // the text item currently taking keystrokes
+  let caret = 0;             // where the next character lands
+  let caretAnchor = 0;       // the other end of the selected run
+  let textOrigin = null;     // the click a new text item stays centred on
+  let lastTap = null;        // for spotting a double click
+  let caretTimer = null;     // only runs while text is being typed
+  let caretOn = true;
+
+  const caretSpot = core.caretSpot;
+
+  core.toolKeys.t = 'text';
+
+  // What the item renderer leaves to the editor: a selected run behind the glyphs,
+  // and a caret on top of them.
+  // A run that crosses lines is one rectangle per line, since text is not one long
+  // ribbon: each line has its own left edge to start from.
+  core.on('textunder', (item, context) => {
+    if (item !== editing || caret === caretAnchor) return false;
+    const from = Math.min(caret, caretAnchor), to = Math.max(caret, caretAnchor);
+    const step = core.lineHeight(item);
+    context.fillStyle = core.cssColor('--selection-tint', 'rgba(26, 115, 255, 0.28)');
+    let start = 0;
+    core.textLines(item).forEach((line, row) => {
+      const end = start + line.length;
+      const a = Math.max(from, start), b = Math.min(to, end);
+      if (b >= a && to > start && from <= end) {
+        const left = core.measureLine(item, line.slice(0, a - start));
+        const right = core.measureLine(item, line.slice(0, b - start));
+        // A selected line break shows as a sliver, so an empty line still reads.
+        const width = Math.max(right - left, to > end ? (item.size || TEXT_SIZE) * 0.3 : 0);
+        if (width > 0) context.fillRect(item.x + left, item.y + row * step, width, step);
+      }
+      start = end + 1;
+    });
+    return false;
+  });
+
+  core.on('textover', (item, context) => {
+    if (item !== editing || caret !== caretAnchor || !caretOn) return false;
+    const size = item.size || TEXT_SIZE;
+    const spot = caretSpot(item, caret);
+    // Wide enough to see when zoomed out, thin enough to read as a caret.
+    const thickness = Math.max(1.5 / core.scene.view.scale, size * 0.04);
+    context.fillStyle = core.themed(item.color);
+    context.fillRect(item.x + spot.x, item.y + spot.y, thickness, size);
+    return false;
+  });
+
+  // A caret that sits perfectly still reads as a stray mark on a drawing canvas.
+  // The timer lives only as long as the typing does.
+  function startCaretBlink() {
+    stopCaretBlink();
+    caretOn = true;
+    caretTimer = setInterval(() => { caretOn = !caretOn; core.requestRedraw(); }, 530);
+  }
+  function stopCaretBlink() {
+    if (caretTimer) clearInterval(caretTimer);
+    caretTimer = null;
+    caretOn = true;
+  }
+
+  // Text is committed by any click, tool change, or Escape. An empty one leaves
+  // nothing behind, and gives back the undo step it took.
+  function commitText() {
+    if (!editing) return;
+    const item = editing;
+    editing = null;
+    textOrigin = null;
+    stopCaretBlink();
+    if (!item.text) {
+      const index = core.scene.items.indexOf(item);
+      if (index >= 0) core.scene.items.splice(index, 1);
+      core.forget();
+    }
+    core.requestRedraw();
+  }
+  core.commitText = commitText;
+
+  // Opening an item selects the whole string, the way double-clicking a field does
+  // anywhere else: type to replace it, or press an arrow to drop the caret at that
+  // end and keep what is there.
+  function startEditing(item) {
+    commitText();
+    editing = item;
+    caretAnchor = 0;
+    caret = (item.text || '').length;
+    textOrigin = null;   // an existing item keeps its position and grows rightward
+    startCaretBlink();
+    core.requestRedraw();
+  }
+
+  function replaceRange(insert) {
+    const text = editing.text || '';
+    const from = Math.min(caret, caretAnchor), to = Math.max(caret, caretAnchor);
+    editing.text = text.slice(0, from) + insert + text.slice(to);
+    caret = caretAnchor = from + insert.length;
+    recentreText();
+  }
+
+  // A new text item grows out from the point you clicked rather than away from it.
+  function recentreText() {
+    if (!textOrigin || !editing) return;
+    const box = core.types.text.box(editing);
+    editing.x = core.round(textOrigin.x - box.w / 2);
+    editing.y = core.round(textOrigin.y - box.h / 2);
+  }
+
+  // Which gap between letters a click landed nearest: the row first, then the gap
+  // along that row.
+  function caretIndexAt(item, world) {
+    const local = core.toLocal(item, world);
+    const lines = core.textLines(item);
+    const row = Math.max(0, Math.min(lines.length - 1,
+      Math.floor((local.y - item.y) / core.lineHeight(item))));
+    const line = lines[row];
+    let best = 0, shortest = Infinity;
+    for (let i = 0; i <= line.length; i++) {
+      const gap = Math.abs(item.x + core.measureLine(item, line.slice(0, i)) - local.x);
+      if (gap < shortest) { shortest = gap; best = i; }
+    }
+    return core.caretIndex(item, row, best);
+  }
+
+  function isSecondTap(item, screenPoint) {
+    const now = Date.now();
+    const again = lastTap && lastTap.item === item && now - lastTap.time < 400
+      && Math.hypot(lastTap.x - screenPoint.x, lastTap.y - screenPoint.y) < 10;
+    lastTap = { item: item, time: now, x: screenPoint.x, y: screenPoint.y };
+    return again;
+  }
+
+  // Select offers each item to this before taking it, so a second click opens the
+  // editor rather than reselecting.
+  core.on('claim', (item, at) => {
+    if (item.type !== 'text' || !isSecondTap(item, at.screenPoint)) return false;
+    startEditing(item);
+    return true;
+  });
+
+  // A click inside the text you are typing puts the caret there instead of
+  // finishing, so the select-everything opening is easy to step back from.
+  core.on('pointerdown', (event, at) => {
+    if (!editing || core.spaceHeld || core.tool === 'pan') return false;
+    if (core.scene.items[core.itemIndexAt(at.world, core.GRAB_SLOP / core.scene.view.scale)] !== editing) return false;
+    caret = caretAnchor = caretIndexAt(editing, at.world);
+    startCaretBlink();
+    core.requestRedraw();
+    return true;
+  }, 10);
+
+  core.on('pointerdown', () => { commitText(); return false; }, 20);
+
+  core.on('pointerdown', (event, at) => {
+    if (core.tool !== 'text') return false;
+    core.remember();
+    editing = core.applyPen({ type: 'text', color: core.strokeColor, size: TEXT_SIZE,
+                              x: core.round(at.world.x), y: core.round(at.world.y), text: '' });
+    caret = caretAnchor = 0;
+    textOrigin = { x: at.world.x, y: at.world.y };   // it grows out from here, not below it
+    core.scene.items.push(editing);
+    recentreText();
+    startCaretBlink();
+    // Hand back the select tool right away. Typing keeps working, because the
+    // keyboard belongs to the caret while one is live, and the next click can go
+    // straight to another item instead of needing Escape first.
+    core.setTool('select', true);
+    core.requestRedraw();
+    return true;
+  }, 90);
+
+  core.on('toolleave', (name, keepTyping) => { if (!keepTyping) commitText(); return false; });
+  core.on('load', () => { editing = null; stopCaretBlink(); return false; });
+  core.on('historystep', () => { editing = null; stopCaretBlink(); return false; });
+  core.on('beforeexport', () => { commitText(); return false; });
+
+  // While text is being typed the canvas is a text field: every key belongs to it.
+  core.on('typing', (event) => {
+    if (!editing) return false;
+    const text = editing.text || '';
+    const key = event.key;
+    const held = event.ctrlKey || event.metaKey;
+    // Enter makes a new line. Escape, a click elsewhere, or a tool change commits.
+    if (key === 'Escape') commitText();
+    else if (key === 'Enter') replaceRange('\n');
+    else if (key === 'ArrowLeft' || key === 'ArrowRight') {
+      const step = key === 'ArrowLeft' ? -1 : 1;
+      if (!event.shiftKey && caret !== caretAnchor) {
+        // An arrow with a run selected collapses to its edge rather than moving.
+        caret = step < 0 ? Math.min(caret, caretAnchor) : Math.max(caret, caretAnchor);
+      } else {
+        caret = Math.max(0, Math.min(text.length, caret + step));
+      }
+      if (!event.shiftKey) caretAnchor = caret;
+    }
+    else if (key === 'ArrowUp' || key === 'ArrowDown') {
+      // Up and down move between lines, keeping the column where it can.
+      const spot = core.caretSpot(editing, caret);
+      const rows = core.textLines(editing).length;
+      const row = spot.row + (key === 'ArrowUp' ? -1 : 1);
+      caret = row < 0 ? 0 : row >= rows ? text.length : core.caretIndex(editing, row, spot.column);
+      if (!event.shiftKey) caretAnchor = caret;
+    }
+    else if (key === 'Home' || key === 'End') {
+      const spot = core.caretSpot(editing, caret);
+      const line = core.textLines(editing)[spot.row];
+      caret = core.caretIndex(editing, spot.row, key === 'Home' ? 0 : line.length);
+      if (!event.shiftKey) caretAnchor = caret;
+    }
+    else if (held && key.toLowerCase() === 'a') { caretAnchor = 0; caret = text.length; }
+    else if (key === 'Backspace') {
+      if (caret !== caretAnchor) replaceRange('');
+      else if (caret > 0) { caret -= 1; caretAnchor = caret; editing.text = text.slice(0, caret) + text.slice(caret + 1); recentreText(); }
+    }
+    else if (key === 'Delete') {
+      if (caret !== caretAnchor) replaceRange('');
+      else if (caret < text.length) { editing.text = text.slice(0, caret) + text.slice(caret + 1); recentreText(); }
+    }
+    else if (key.length === 1 && !held) replaceRange(key);
+    else return false;
+    if (editing) startCaretBlink();   // solid while you type, blinking once you stop
+    event.preventDefault();
+    core.requestRedraw();
+    return true;
+  });
+
+  // The clipboard plugin asks before reaching for the scene, so copy and paste
+  // work on the run of text when there is one.
+  core.on('copytext', (payload) => {
+    if (!editing) return false;
+    const run = (editing.text || '').slice(Math.min(caret, caretAnchor), Math.max(caret, caretAnchor));
+    if (!run) return true;   // a live caret with nothing selected copies nothing
+    payload.text = run;
+    return true;
+  });
+
+  core.on('pastetext', (payload) => {
+    if (!editing || !payload.text) return false;
+    replaceRange(payload.text.replace(/\r\n?/g, '\n'));   // line breaks survive the trip
+    core.requestRedraw();
+    return true;
+  });
+});
+
+/* tool: image — putting a picture into the scene.
+   Needs: core, item-image. */
+createMiniCanvas.plugin('tool-image', ['item-image'], function (core) {
+  core.api.addImage = (src, world, maxSize) => {
+    const image = new Image();
+    image.onload = () => {
+      const fit = Math.min(1, (maxSize || 600) / Math.max(image.width, image.height));
+      const w = image.width * fit;
+      const h = image.height * fit;
+      const at = world || core.viewCenter();
+      core.remember();
+      core.imageCache.set(src, image);
+      core.scene.items.push({
+        type: 'image',
+        x: core.round(at.x - w / 2), y: core.round(at.y - h / 2),
+        w: core.round(w), h: core.round(h),
+        src: src
+      });
+      core.requestRedraw();
+    };
+    image.src = src;
+  };
+});
+
+/* select — the selection itself: clicking, box-selecting, dragging, deleting, and
+   the frame drawn around it. Everything that acts on a selection depends on this.
+   Needs: core. */
+createMiniCanvas.plugin('select', [], function (core) {
+  const selection = core.selection = new Set();
+  let marquee = null;            // world-space box while box-selecting
+  let isDragging = false;
+  let dragRemembered = false;
+  let announcedSelection = '';
+  let hovered = null;          // what the cursor is over, drawn without handles
+
+  core.toolKeys.v = 'select';
+
+  // Groups replace this. On its own, an item is the only thing it brings along.
+  core.membersOf = (item) => [item];
+
+  core.selectItem = (item, additive) => {
+    const members = core.membersOf(item);
+    if (!additive) {
+      if (selection.has(item)) return;
+      selection.clear();
+      for (const member of members) selection.add(member);
+      return;
+    }
+    const drop = selection.has(item);
+    for (const member of members) {
+      if (drop) selection.delete(member); else selection.add(member);
+    }
+  };
+
+  // Alignment moves things a unit at a time. Without groups every item is its own
+  // unit, which is exactly the plain behaviour.
+  core.selectionUnits = () => {
+    const units = new Map();
+    for (const item of selection) {
+      const key = core.groupKey ? core.groupKey(item) : item;
+      if (!units.has(key)) units.set(key, []);
+      units.get(key).push(item);
+    }
+    return [...units.values()];
+  };
+
+  const padded = core.padded = (box, pad) =>
+    ({ x: box.x - pad, y: box.y - pad, w: box.w + pad * 2, h: box.h + pad * 2 });
+
+  // The frame drawn around a selection, and the space its handles live in. One
+  // rotated item gets a frame that turns with it; anything else gets an upright
+  // box around the lot, since several angles have no single frame to share.
+  // `box` is what you see: the outside edge of the ink, with no padding at all.
+  // `content` is where the coordinates are, and is what a resize anchors to, so the
+  // two stay separate even though the frame is drawn on the first.
+  core.selectionFrame = () => {
+    const items = [...selection];
+    if (!items.length) return null;
+    const only = items.length === 1 ? items[0] : null;
+    if (only && only.angle) {
+      const local = core.itemBox(only);
+      if (local) return {
+        box: padded(local, core.inkPad(only)), content: local, angle: only.angle,
+        center: { x: local.x + local.w / 2, y: local.y + local.h / 2 }
+      };
+    }
+    const content = core.boundsOf(selection);
+    if (!content) return null;
+    return {
+      box: core.visualBounds(selection) || content, content: content, angle: 0,
+      center: { x: content.x + content.w / 2, y: content.y + content.h / 2 }
+    };
+  };
+
+  // A world point in the frame's own upright space. Everything about handles is
+  // decided there, so a turned frame needs no special cases downstream.
+  core.toFrame = (world, frame) => {
+    if (!frame.angle) return world;
+    const spun = core.spin(world.x, world.y, frame.center, -core.radiansOf(frame.angle));
+    return { x: spun[0], y: spun[1] };
+  };
+
+  function moveSelection(dx, dy) {
+    for (const item of selection) core.transformItem(item, (x, y) => [x + dx, y + dy]);
+    core.requestRedraw();
+  }
+
+  // Drag deltas are sub-0.1 at high zoom, so round once the drag ends, not per frame.
+  core.roundSelection = () => {
+    for (const item of selection) {
+      core.transformItem(item, (x, y) => [core.round(x), core.round(y)]);
+      if (typeof item.size === 'number') item.size = core.round(item.size);
+      if (typeof item.w === 'number') { item.w = core.round(item.w); item.h = core.round(item.h); }
+    }
+  };
+
+  const normalised = core.normalised = (box) => ({
+    x: Math.min(box.x1, box.x2), y: Math.min(box.y1, box.y2),
+    w: Math.abs(box.x2 - box.x1), h: Math.abs(box.y2 - box.y1)
+  });
+
+  // Everything the dragged rectangle touches.
+  function selectWithin(marqueeBox) {
+    const box = normalised(marqueeBox);
+    const right = box.x + box.w, bottom = box.y + box.h;
+    const inside = (x, y) => x >= box.x && x <= right && y >= box.y && y <= bottom;
+    for (const item of core.scene.items) {
+      const type = core.types[item.type];
+      if (type && type.within) {
+        if (type.within(item, inside)) selection.add(item);
+        continue;
+      }
+      const itemBox = core.boundsOf([item]);
+      if (itemBox && itemBox.x <= right && itemBox.x + itemBox.w >= box.x
+                  && itemBox.y <= bottom && itemBox.y + itemBox.h >= box.y) selection.add(item);
+    }
+    for (const item of [...selection]) for (const member of core.membersOf(item)) selection.add(member);
+  }
+
+  const deleteSelection = core.deleteSelection = () => {
+    if (!selection.size) return;
+    core.remember();
+    core.scene.items = core.scene.items.filter((item) => !selection.has(item));
+    selection.clear();
+    core.requestRedraw();
+  };
+
+  core.on('hover', (event, at) => {
+    const over = (at && core.tool === 'select')
+      ? core.scene.items[core.itemIndexAt(at.world, core.GRAB_SLOP / core.scene.view.scale)]
+      : undefined;
+    // Something already selected shows its own frame, so hovering it adds nothing.
+    const next = (over && !selection.has(over)) ? over : null;
+    if (next === hovered) return false;
+    hovered = next;
+    core.requestRedraw();
+    return false;
+  });
+
+  core.on('pointerdown', (event, at) => {
+    if (core.tool !== 'select') return false;
+    hovered = null;   // the click resolves it one way or the other
+    if (core.fire('handledown', event, at)) return true;   // resize and rotate get first refusal
+
+    const index = core.itemIndexAt(at.world, core.GRAB_SLOP / core.scene.view.scale);
+    const item = index < 0 ? null : core.scene.items[index];
+    if (item) {
+      if (core.fire('claim', item, at)) return true;       // text opens for editing instead
+      core.selectItem(item, event.shiftKey);
+      if (selection.has(item) && core.fire('dragstart', event, at)) {
+        dragRemembered = true;   // something replaced the drag, and recorded its own step
+        isDragging = true;
+      } else {
+        dragRemembered = false;
+        isDragging = selection.has(item);
+      }
+    } else {
+      if (!event.shiftKey) selection.clear();
+      marquee = { x1: at.world.x, y1: at.world.y, x2: at.world.x, y2: at.world.y };
+    }
+    core.requestRedraw();
+    return true;
+  }, 50);
+
+  core.on('pointermove', (event, at) => {
+    if (isDragging) {
+      if (!dragRemembered) { core.remember(); dragRemembered = true; }
+      moveSelection(at.world.x - at.from.x, at.world.y - at.from.y);
+      return true;
+    }
+    if (marquee) {
+      marquee.x2 = at.world.x;
+      marquee.y2 = at.world.y;
+      core.requestRedraw();
+      return true;
+    }
+    return false;
+  }, 50);
+
+  core.on('pointerup', () => {
+    if (isDragging) { core.roundSelection(); isDragging = false; }
+    if (marquee) {
+      // A click leaves a zero-size marquee behind. Without this it would box-select
+      // anything whose bounding box happens to contain that one point.
+      const box = normalised(marquee);
+      const minimum = 2 / core.scene.view.scale;
+      if (box.w > minimum || box.h > minimum) selectWithin(marquee);
+      marquee = null;
+    }
+    return false;
+  });
+
+  core.on('toolleave', () => { selection.clear(); marquee = null; hovered = null; return false; });
+  core.on('load', () => { selection.clear(); hovered = null; return false; });
+  // The items that come back are freshly parsed objects, not the ones selected.
+  core.on('historystep', () => { selection.clear(); hovered = null; return false; });
+
+  const NUDGES = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+
+  core.on('keydown', (event) => {
+    if (!selection.size) return false;
+    if (core.fire('selectionkey', event)) return true;
+    const nudge = NUDGES[event.key];
+    if (nudge) {
+      const step = event.shiftKey ? 10 : 1;
+      if (!event.repeat) core.remember();   // one undo entry per held key, not per repeat
+      moveSelection(nudge[0] * step, nudge[1] * step);
+      event.preventDefault();
+      return true;
+    }
+    if (event.key === 'Delete' || event.key === 'Backspace') {
+      deleteSelection();
+      event.preventDefault();
+      return true;
+    }
+    return false;
+  });
+
+  core.on('overlay', () => {
+    if (!selection.size && !marquee && !hovered) return false;
+    const context = core.context;
+    const unit = 1 / core.scene.view.scale;   // keep outlines one screen pixel at any zoom
+    context.save();
+    context.strokeStyle = core.cssColor('--selection', '#1a73ff');
+    context.fillStyle = core.cssColor('--handle-fill', '#ffffff');
+    context.lineWidth = unit;
+
+    // What the cursor is over gets the outline and nothing else: handles would
+    // invite a drag that hovering has not earned.
+    if (hovered) {
+      const box = core.visualBounds(core.membersOf(hovered));
+      if (box) {
+        context.globalAlpha = 0.6;
+        context.strokeRect(box.x, box.y, box.w, box.h);
+        context.globalAlpha = 1;
+      }
+    }
+
+    if (marquee) {                       // dashed, so an in-progress lasso reads
+      const box = normalised(marquee);   // differently from a settled selection
+      context.setLineDash([4 * unit, 4 * unit]);
+      context.strokeRect(box.x, box.y, box.w, box.h);
+      context.setLineDash([]);
+    }
+    // Several loose items each get their own outline. A group gets one, because a
+    // group is one thing until you take it apart.
+    if (selection.size > 1 && !(core.selectionIsOneGroup && core.selectionIsOneGroup())) {
+      for (const item of selection) {
+        const box = core.visualBounds([item]);
+        if (box) context.strokeRect(box.x, box.y, box.w, box.h);
+      }
+    }
+    const frame = core.selectionFrame();
+    if (frame) {
+      // Turning the canvas means the frame and its handles are drawn upright and
+      // land rotated, with no per-corner trigonometry.
+      if (frame.angle) {
+        context.translate(frame.center.x, frame.center.y);
+        context.rotate(core.radiansOf(frame.angle));
+        context.translate(-frame.center.x, -frame.center.y);
+      }
+      context.strokeRect(frame.box.x, frame.box.y, frame.box.w, frame.box.h);
+      core.fire('handles', frame, context);
+    }
+    context.restore();
+    return false;
+  });
+
+  // Every path that changes the selection ends in a redraw, so one check here
+  // covers all of them without instrumenting each.
+  //
+  // The signature is built from which items are selected, not how many. Counting
+  // alone misses swapping one item for another: a listener that cares what kind of
+  // thing is picked would never hear about it.
+  let nextMark = 1;
+  const marks = new WeakMap();
+  const markOf = (item) => {
+    let mark = marks.get(item);
+    if (!mark) { mark = nextMark++; marks.set(item, mark); }
+    return mark;
+  };
+
+  core.on('afterdraw', () => {
+    const units = core.selectionUnits().length;
+    // Units, not items, for the count: alignment needs two things to line up, and
+    // a group counts as one thing.
+    const shape = units + ':' + [...selection].map(markOf).sort((a, b) => a - b).join(',');
+    if (shape === announcedSelection) return false;
+    announcedSelection = shape;
+    core.emit('selectionchange', { items: selection.size, units: units });
+    return false;
+  });
+
+  Object.assign(core.api, {
+    selection: () => [...selection],
+    selectAll: () => {
+      selection.clear();
+      core.scene.items.forEach((item) => selection.add(item));
+      core.requestRedraw();
+    },
+    deleteSelection: deleteSelection
+  });
+});
+
+/* transform — the handles on a selection: four corners to resize, one stalk to
+   rotate. Both work in the frame's own space, so a turned selection scales along
+   the axes you see.
+   Needs: core, select. */
+createMiniCanvas.plugin('transform', ['select'], function (core) {
+  const ROTATE_REACH = 22;   // screen pixels above the box for the spin handle
+  let resize = null;
+  let rotation = null;
+  let dragRemembered = false;
+
+  // Each corner drags against the opposite one, which must stay exactly put. The
+  // handles sit on the padded box you can see, but they anchor to the real content
+  // corner: anchoring to the padded corner would drift everything by the padding.
+  function handleCorners(box, anchorBox) {
+    const source = anchorBox || box;
+    const right = box.x + box.w, bottom = box.y + box.h;
+    const holdRight = source.x + source.w, holdBottom = source.y + source.h;
+    return [
+      { x: box.x, y: box.y,   anchor: { x: holdRight, y: holdBottom } },
+      { x: right, y: box.y,   anchor: { x: source.x,  y: holdBottom } },
+      { x: box.x, y: bottom,  anchor: { x: holdRight, y: source.y } },
+      { x: right, y: bottom,  anchor: { x: source.x,  y: source.y } }
+    ];
+  }
+
+  const rotationHandle = (box) =>
+    ({ x: box.x + box.w / 2, y: box.y - ROTATE_REACH / core.scene.view.scale });
+
+  // Object.assign alone cannot remove a field the snapshot never had, so a drag
+  // that adds one (an angle, say) would accumulate it frame after frame.
+  function restoreOriginal(entry) {
+    const original = JSON.parse(entry.original);
+    for (const key of Object.keys(entry.item)) if (!(key in original)) delete entry.item[key];
+    Object.assign(entry.item, original);
+  }
+
+  const snapshot = () => [...core.selection].map((item) => ({ item: item, original: JSON.stringify(item) }));
+
+  function startResize(handle, world, frame) {
+    resize = {
+      anchor: handle.anchor,          // in the frame's own space, on the content corner
+      // Measured from where the pointer actually went down, so the scale starts at
+      // exactly 1 and nothing jumps on the first frame.
+      from: core.toFrame(world, frame),
+      angle: frame.angle,
+      center: { x: frame.center.x, y: frame.center.y },
+      // Which edges the anchor sits on, so the drag can put them back afterwards.
+      side: {
+        x: handle.anchor.x > frame.content.x + frame.content.w / 2 ? 1 : 0,
+        y: handle.anchor.y > frame.content.y + frame.content.h / 2 ? 1 : 0
+      },
+      // Scale the original geometry every frame instead of the last frame's, so a
+      // long drag can't accumulate rounding error.
+      items: snapshot()
+    };
+  }
+
+  function applyResize(world, keepAspect) {
+    const anchor = resize.anchor;
+    const local = core.toFrame(world, resize);
+    const spanX = resize.from.x - anchor.x;
+    const spanY = resize.from.y - anchor.y;
+    let scaleX = spanX ? Math.max(0.02, (local.x - anchor.x) / spanX) : 1;
+    let scaleY = spanY ? Math.max(0.02, (local.y - anchor.y) / spanY) : 1;
+    if (keepAspect) scaleX = scaleY = Math.max(scaleX, scaleY);
+
+    const list = resize.items.map((entry) => entry.item);
+    const centersBefore = resize.angle ? list.map(core.itemCenter) : null;
+    for (const entry of resize.items) {
+      restoreOriginal(entry);
+      const item = entry.item;
+      core.transformItem(item, (x, y) => [
+        anchor.x + (x - anchor.x) * scaleX,
+        anchor.y + (y - anchor.y) * scaleY
+      ]);
+      const type = core.types[item.type];
+      // A stroke's `width` is deliberately left alone. Line weight belongs to the
+      // pen that drew it, not to the geometry, so scaling never re-weights ink.
+      if (type && type.scale) type.scale(item, scaleX, scaleY);
+    }
+
+    // Text has no stored width: it is however wide the glyphs come out, which does
+    // not scale in step with its position. So rather than trust the arithmetic,
+    // measure the result and slide the anchored edges back where they started.
+    const after = resize.angle ? core.itemBox(list[0]) : core.boundsOf(list);
+    if (after) {
+      const dx = anchor.x - (resize.side.x ? after.x + after.w : after.x);
+      const dy = anchor.y - (resize.side.y ? after.y + after.h : after.y);
+      if (dx || dy) for (const item of list) core.transformItem(item, (x, y) => [x + dx, y + dy]);
+    }
+
+    // A rotated item spins about its own centre, and that centre just moved. Shift
+    // it back so the corner you are not dragging stays put on screen too.
+    if (resize.angle && centersBefore) {
+      const was = core.spinPoint(anchor, centersBefore[0], resize.angle);
+      const now = core.spinPoint(anchor, core.itemCenter(list[0]), resize.angle);
+      core.transformItem(list[0], (x, y) => [x + was.x - now.x, y + was.y - now.y]);
+    }
+    core.requestRedraw();
+  }
+
+  function startRotation(world) {
+    const box = core.boundsOf(core.selection);
+    const center = { x: box.x + box.w / 2, y: box.y + box.h / 2 };
+    const items = [...core.selection];
+    rotation = {
+      center: center,
+      from: Math.atan2(world.y - center.y, world.x - center.x),
+      // Where the thing already points, so a snap can land on a true angle rather
+      // than fifteen degrees further round from wherever it happened to be. One
+      // boxed item knows its own angle; a stroke or a mixed selection does not, so
+      // for those the snap is measured from where the drag started.
+      base: (items.length === 1 && core.itemBox(items[0]) && items[0].angle) || 0,
+      items: snapshot()
+    };
+  }
+
+  function applyRotation(world, snap) {
+    const now = Math.atan2(world.y - rotation.center.y, world.x - rotation.center.x);
+    let degrees = (now - rotation.from) * 180 / Math.PI;
+    // Snap the angle the item ends up at, not the amount it turned by. Something
+    // sitting at 7° lands on 0° or 15°, which is what straightening means.
+    if (snap) degrees = Math.round((rotation.base + degrees) / 15) * 15 - rotation.base;
+    for (const entry of rotation.items) {
+      restoreOriginal(entry);
+      rotateItem(entry.item, rotation.center, degrees);
+    }
+    core.requestRedraw();
+  }
+
+  // Strokes rotate by moving their points and need no angle field. Boxed items
+  // carry `angle` and swing their position around the group centre.
+  function rotateItem(item, center, degrees) {
+    const radians = core.radiansOf(degrees);
+    const box = core.itemBox(item);
+    if (!box) {
+      core.transformItem(item, (x, y) => core.spin(x, y, center, radians));
+      return;
+    }
+    const middle = { x: box.x + box.w / 2, y: box.y + box.h / 2 };
+    const moved = core.spin(middle.x, middle.y, center, radians);
+    item.x += moved[0] - middle.x;
+    item.y += moved[1] - middle.y;
+    const turned = ((item.angle || 0) + degrees) % 360;
+    item.angle = core.round(turned < 0 ? turned + 360 : turned);
+    if (!item.angle) delete item.angle;   // back at zero, so leave the file clean
+  }
+
+  core.on('handledown', (event, at) => {
+    const frame = core.selectionFrame();
+    if (!frame) return false;
+    const local = core.toFrame(at.world, frame);
+    const reach = core.HANDLE_SIZE / core.scene.view.scale;
+    const near = (point) => Math.abs(point.x - local.x) < reach && Math.abs(point.y - local.y) < reach;
+    dragRemembered = false;
+    if (near(rotationHandle(frame.box))) { startRotation(at.world); return true; }
+    const corner = handleCorners(frame.box, frame.content).find(near);
+    if (!corner) return false;
+    startResize(corner, at.world, frame);
+    return true;
+  });
+
+  core.on('pointermove', (event, at) => {
+    if (!rotation && !resize) return false;
+    if (!dragRemembered) { core.remember(); dragRemembered = true; }
+    if (rotation) applyRotation(at.world, event.shiftKey);   // shift snaps to 15°
+    else applyResize(at.world, event.shiftKey);
+    return true;
+  }, 20);
+
+  core.on('pointerup', () => {
+    if (resize || rotation) core.roundSelection();
+    resize = rotation = null;
+    return false;
+  });
+  core.on('toolleave', () => { resize = rotation = null; return false; });
+
+  core.on('handles', (frame, context) => {
+    const size = core.HANDLE_SIZE / core.scene.view.scale;
+    for (const corner of handleCorners(frame.box, frame.content)) {
+      context.fillRect(corner.x - size / 2, corner.y - size / 2, size, size);
+      context.strokeRect(corner.x - size / 2, corner.y - size / 2, size, size);
+    }
+    const spinner = rotationHandle(frame.box);   // a stalk above the box, so it never
+    context.beginPath();                         // sits on top of the work itself
+    context.moveTo(frame.box.x + frame.box.w / 2, frame.box.y);
+    context.lineTo(spinner.x, spinner.y);
+    context.stroke();
+    context.beginPath();
+    context.arc(spinner.x, spinner.y, size / 2, 0, Math.PI * 2);
+    context.fill();
+    context.stroke();
+    return false;
+  });
+});
+
+/* groups — a shared name on a set of items, so they select and move as one.
+   Needs: core, select. */
+createMiniCanvas.plugin('groups', ['select'], function (core) {
+  // A group is a shared name on the items, nothing more: no container, no nesting,
+  // no order of its own. Selecting one member selects the rest.
+  core.membersOf = (item) => {
+    if (!item || !item.group) return [item];
+    return core.scene.items.filter((other) => other.group === item.group);
+  };
+
+  core.groupKey = (item) => item.group || item;
+
+  core.selectionIsOneGroup = () => {
+    const items = [...core.selection];
+    if (!items.length || !items[0].group) return false;
+    return items.every((item) => item.group === items[0].group);
+  };
+
+  function nextGroupName(taken) {
+    let highest = 0;
+    const consider = (name) => {
+      const match = /^g(\d+)$/.exec(name || '');
+      if (match) highest = Math.max(highest, Number(match[1]));
+    };
+    for (const item of core.scene.items) consider(item.group);
+    for (const name of taken || []) consider(name);
+    return 'g' + (highest + 1);
+  }
+  core.nextGroupName = nextGroupName;
+
+  // One key does both, because grouping and ungrouping are the same gesture from
+  // the user's side: take these things apart, or put them together.
+  function toggleGroup() {
+    const items = [...core.selection];
+    if (!items.length) return;
+    if (core.selectionIsOneGroup()) {
+      core.remember();
+      for (const item of items) delete item.group;   // they stay selected, now singly
+    } else {
+      if (items.length < 2) return;                  // a group of one is just an item
+      core.remember();
+      const name = nextGroupName();
+      for (const item of items) item.group = name;
+    }
+    core.requestRedraw();
+  }
+
+  core.on('keydown', (event) => {
+    if (!(event.ctrlKey || event.metaKey)) return false;
+    if ((event.key || '').toLowerCase() !== 'g') return false;
+    toggleGroup();
+    event.preventDefault();
+    return true;
+  }, 20);
+
+  core.api.toggleGroup = toggleGroup;
+  // So a toolbar can show whether the button will group or ungroup.
+  core.api.isGrouped = () => core.selectionIsOneGroup();
+});
+
+/* arrange — lining things up and stacking them: alt+wasd to align, alt+v and
+   alt+h to centre, brackets for layer order.
+   Needs: core, select. */
+createMiniCanvas.plugin('arrange', ['select'], function (core) {
+  // Alignment matches on the physical key first, because alt turns a letter into
+  // some other glyph on most layouts: option-w is not "w" by the time the event
+  // arrives. The letter and the glyph are listed too, so a browser or layout that
+  // reports the key differently still lands on the same command.
+  const ALIGN_KEYS = {
+    KeyA: [-1, 0], a: [-1, 0], 'å': [-1, 0],
+    KeyD: [1, 0],  d: [1, 0],  '∂': [1, 0],
+    KeyW: [0, -1], w: [0, -1], '∑': [0, -1],
+    KeyS: [0, 1],  s: [0, 1],  'ß': [0, 1]
+  };
+  const CENTER_KEYS = { KeyV: 'y', v: 'y', '√': 'y', KeyH: 'x', h: 'x', '˙': 'x' };
+  // Shift turns [ and ] into { and } on most layouts, so accept both spellings.
+  const BRACKETS = { '[': -1, '{': -1, ']': 1, '}': 1 };
+
+  const lookup = (table, event) => table[event.code] || table[(event.key || '').toLowerCase()];
+
+  function slideUnit(items, axis, distance) {
+    if (!distance) return false;
+    for (const item of items) {
+      core.transformItem(item, (x, y) =>
+        axis === 'x' ? [core.round(x + distance), y] : [x, core.round(y + distance)]);
+    }
+    return true;
+  }
+
+  // Everything lines up on whichever edge already reaches furthest that way.
+  function alignSelection(direction) {
+    const units = core.selectionUnits();
+    if (units.length < 2) return;
+    const axis = direction[0] ? 'x' : 'y';
+    const toward = direction[0] || direction[1];      // -1 towards the top or left
+    const edgeOf = (box) => axis === 'x'
+      ? (toward < 0 ? box.x : box.x + box.w)
+      : (toward < 0 ? box.y : box.y + box.h);
+    const target = edgeOf(core.boundsOf(core.selection));
+    core.remember();
+    let moved = false;
+    for (const unit of units) moved = slideUnit(unit, axis, target - edgeOf(core.boundsOf(unit))) || moved;
+    if (!moved) core.forget(); else core.requestRedraw();
+  }
+
+  // Centres share an axis: 'y' puts everything on one horizontal line, 'x' stacks
+  // them in one column.
+  function centerSelection(axis) {
+    const units = core.selectionUnits();
+    if (units.length < 2) return;
+    const middleOf = (box) => axis === 'x' ? box.x + box.w / 2 : box.y + box.h / 2;
+    const target = middleOf(core.boundsOf(core.selection));
+    core.remember();
+    let moved = false;
+    for (const unit of units) moved = slideUnit(unit, axis, target - middleOf(core.boundsOf(unit))) || moved;
+    if (!moved) core.forget(); else core.requestRedraw();
+  }
+
+  // +1 moves the selection toward the front, -1 toward the back. By default it goes
+  // all the way; oneStep moves a single layer instead.
+  function reorder(direction, oneStep) {
+    const selection = core.selection;
+    if (!selection.size) return;
+    if (!oneStep) {
+      const picked = core.scene.items.filter((item) => selection.has(item));
+      const rest = core.scene.items.filter((item) => !selection.has(item));
+      const next = direction > 0 ? rest.concat(picked) : picked.concat(rest);
+      if (next.every((item, index) => item === core.scene.items[index])) return;   // already there
+      core.remember();
+      core.scene.items = next;
+      core.requestRedraw();
+      return;
+    }
+    const indices = [];
+    core.scene.items.forEach((item, index) => { if (selection.has(item)) indices.push(index); });
+    if (direction > 0) indices.reverse();   // move the frontmost first, or they collide
+    core.remember();
+    let moved = false;
+    for (const index of indices) {
+      const target = index + direction;
+      if (target < 0 || target >= core.scene.items.length) continue;
+      if (selection.has(core.scene.items[target])) continue;   // already stacked against a sibling
+      const swap = core.scene.items[target];
+      core.scene.items[target] = core.scene.items[index];
+      core.scene.items[index] = swap;
+      moved = true;
+    }
+    if (!moved) core.forget();   // hitting the end of the stack is not an edit
+    else core.requestRedraw();
+  }
+
+  core.on('selectionkey', (event) => {
+    // Alt lines things up: wasd for the four edges, v and h for the two centres.
+    if (event.altKey && !event.ctrlKey && !event.metaKey) {
+      const toward = lookup(ALIGN_KEYS, event);
+      if (toward) { alignSelection(toward); event.preventDefault(); return true; }
+      const axis = lookup(CENTER_KEYS, event);
+      if (axis) { centerSelection(axis); event.preventDefault(); return true; }
+    }
+    const layer = BRACKETS[event.key];
+    if (layer) {
+      reorder(layer, event.shiftKey);   // shift moves one step instead of all the way
+      event.preventDefault();
+      return true;
+    }
+    return false;
+  });
+
+  Object.assign(core.api, { align: alignSelection, center: centerSelection, reorder: reorder });
+});
+
+/* erase — remove whatever is under the cursor, and only what is visible there.
+   Needs: core. */
+createMiniCanvas.plugin('erase', [], function (core) {
+  core.toolKeys.e = 'erase';
+
+  // No slop: erasing removes what is painted, nothing beside it. A line's target
+  // is exactly its own width, so thinning a line thins its eraser target with it.
+  function eraseAt(world) {
+    const index = core.itemIndexAt(world, 0);
+    if (index < 0) return;
+    core.remember();
+    if (core.selection) core.selection.delete(core.scene.items[index]);
+    core.scene.items.splice(index, 1);
+    core.requestRedraw();
+  }
+
+  core.on('pointerdown', (event, at) => {
+    if (core.tool !== 'erase') return false;
+    eraseAt(at.world);
+    return true;
+  }, 40);
+
+  core.on('pointermove', (event, at) => {
+    if (core.tool !== 'erase' || !event.buttons) return false;
+    eraseAt(at.world);
+    return true;
+  }, 40);
+});
+
+/* history — undo and redo. Nothing else knows it exists: the core's remember and
+   forget do nothing until this replaces them.
+   Needs: core. */
+createMiniCanvas.plugin('history', [], function (core) {
+  const undoStack = [];
+  let redoStack = [];
+  let droppedRedo = [];   // the trail the last remember() set aside
+
+  core.record = () => {
+    undoStack.push(JSON.stringify(core.scene.items));
+    if (undoStack.length > 60) undoStack.shift();
+    // A fresh edit ends the redo trail: you cannot redo your way into a future that
+    // no longer follows from here. Held aside in case this edit turns out to be a
+    // no-op, so pressing a key that changes nothing does not cost you the trail.
+    droppedRedo = redoStack;
+    redoStack = [];
+  };
+
+  // The edit did nothing after all, so take the step back out.
+  core.forget = () => {
+    undoStack.pop();
+    redoStack = droppedRedo;
+    droppedRedo = [];
+  };
+
+  // Undo and redo are the same move in opposite directions: hand the current scene
+  // to the other stack, take the top of this one.
+  function step(from, to) {
+    if (!from.length) return;
+    core.fire('historystep');
+    to.push(JSON.stringify(core.scene.items));
+    core.scene.items = JSON.parse(from.pop());
+    core.requestRedraw();
+  }
+
+  const undo = () => step(undoStack, redoStack);
+  const redo = () => step(redoStack, undoStack);
+
+  core.on('load', () => {
+    undoStack.length = 0;
+    redoStack = [];
+    droppedRedo = [];
+    return false;
+  });
+
+  core.on('keydown', (event) => {
+    if (!(event.ctrlKey || event.metaKey)) return false;
+    if (event.code !== 'KeyZ' && (event.key || '').toLowerCase() !== 'z') return false;
+    if (event.shiftKey) redo(); else undo();   // shift holds z, so match on the code too
+    event.preventDefault();
+    return true;
+  }, 10);
+
+  Object.assign(core.api, { undo: undo, redo: redo });
+});
+
+/* clipboard — copy, paste, and option-drag to duplicate. The copy buffer is a
+   scene fragment in the same format as the file, so it travels anywhere text does.
+   Needs: core, select. Better with: groups (copies get fresh names). */
+createMiniCanvas.plugin('clipboard', ['select'], function (core) {
+  let clipboard = '';   // fallback when the system clipboard is closed
+
+  // Copies land at the front, keep their order among themselves, and end up
+  // selected so a duplicate can be dragged straight off the original. Groups are
+  // renamed, or the copy would select together with the thing it came from.
+  function duplicateItems(items, dx, dy) {
+    if (!items.length) return [];
+    const renamed = new Map();
+    const copies = items.map((item) => {
+      const copy = JSON.parse(JSON.stringify(item));
+      if (copy.group && core.nextGroupName) {
+        if (!renamed.has(copy.group)) renamed.set(copy.group, core.nextGroupName(renamed.values()));
+        copy.group = renamed.get(copy.group);
+      }
+      if (dx || dy) core.transformItem(copy, (x, y) => [core.round(x + dx), core.round(y + dy)]);
+      return copy;
+    });
+    core.remember();
+    core.scene.items.push(...copies);
+    core.selection.clear();
+    for (const copy of copies) core.selection.add(copy);
+    core.requestRedraw();
+    return copies;
+  }
+
+  const selected = () => core.scene.items.filter((item) => core.selection.has(item));
+
+  function copySelection() {
+    const items = selected();
+    if (!items.length) return '';
+    clipboard = JSON.stringify({ format: 'minicanvas/1', items: items });
+    return clipboard;
+  }
+
+  function pasteText(text) {
+    if (!text) return false;
+    let parsed = null;
+    try { parsed = JSON.parse(text); } catch (error) { parsed = null; }
+    const items = parsed && Array.isArray(parsed.items) ? parsed.items : null;
+    const target = core.hoverPoint ? core.toWorld(core.hoverPoint) : core.viewCenter();
+    if (!items || !items.length) {
+      // Not one of ours. Plain text is still something worth pasting, if there is
+      // anything loaded that knows how to hold it.
+      const line = String(text).replace(/\s+/g, ' ').trim();
+      if (!line || !core.newText) return false;
+      duplicateItems([core.newText(target, line)], 0, 0);
+      return true;
+    }
+    const box = core.boundsOf(items);
+    const dx = box ? target.x - (box.x + box.w / 2) : 0;
+    const dy = box ? target.y - (box.y + box.h / 2) : 0;
+    duplicateItems(items, dx, dy);
+    return true;
+  }
+
+  // Leave the originals where they are and drag the copies instead.
+  core.on('dragstart', (event) => {
+    if (!event.altKey) return false;
+    duplicateItems(selected(), 0, 0);
+    return true;
+  });
+
+  // Copy and paste ride the browser's own events rather than a key handler: they
+  // arrive with the real clipboard attached, and need no permission prompt.
+  const inTextField = (event) => {
+    const tag = event.target && event.target.tagName;
+    return tag === 'TEXTAREA' || tag === 'INPUT';
+  };
+
+  core.listen(window, 'copy', (event) => {
+    if (inTextField(event) || !event.clipboardData || !core.isActive()) return;
+    const payload = { text: '' };
+    if (core.fire('copytext', payload)) {         // a live caret copies its own run
+      if (!payload.text) return;
+    } else {
+      payload.text = copySelection();
+    }
+    if (!payload.text) return;
+    event.clipboardData.setData('text/plain', payload.text);
+    event.preventDefault();
+  });
+
+  core.listen(window, 'paste', (event) => {
+    if (inTextField(event) || !event.clipboardData || !core.isActive()) return;
+    const text = event.clipboardData.getData('text/plain');
+    if (core.fire('pastetext', { text: text })) { event.preventDefault(); return; }
+    // Only fall back to our own buffer when the clipboard has no text of its own,
+    // or pasting something copied elsewhere would silently paste the wrong thing.
+    if (pasteText(text || clipboard)) event.preventDefault();
+  });
+
+  Object.assign(core.api, {
+    duplicate: (dx, dy) => duplicateItems(selected(), dx || 0, dy || 0),
+    copy: copySelection,
+    paste: pasteText
+  });
+});
+
+/* export — SVG for the archive, PNG for a picture. Both carry the document's own
+   colours rather than whatever the current theme shows.
+   Needs: core. */
+createMiniCanvas.plugin('export', [], function (core) {
+  const escapeXml = (text) =>
+    String(text).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+
+  function spinAttribute(item) {
+    const fade = item.opacity !== undefined ? ` opacity="${item.opacity}"` : '';
+    if (!item.angle) return fade;
+    const middle = core.itemCenter(item);
+    return ` transform="rotate(${item.angle} ${core.round(middle.x)} ${core.round(middle.y)})"` + fade;
+  }
+
+  // The archival exit: any browser, image viewer, or printer from now to 2125
+  // can open the result without a line of JavaScript.
+  function toSVG() {
+    core.fire('beforeexport');
+    const box = core.boundsOf(core.scene.items) || { x: 0, y: 0, w: 100, h: 100 };
+    const body = core.scene.items.map((item) => {
+      const type = core.types[item.type];
+      if (!type || !type.svg) return '';
+      const open = type.svg(item, escapeXml) + spinAttribute(item);
+      return type.svgTag
+        ? `${open}>${type.svgBody(item, escapeXml)}</${type.svgTag}>`
+        : `${open}/>`;
+    }).filter(Boolean).join('\n  ');
+    const pad = 8;
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${box.x - pad} ${box.y - pad}`
+         + ` ${box.w + pad * 2} ${box.h + pad * 2}">\n  ${body}\n</svg>`;
+  }
+
+  // Renders straight to an offscreen canvas by pointing the same draw code at a
+  // different context. Pass the items to include, or nothing for the whole scene.
+  function toPNG(items, pixelRatio) {
+    core.fire('beforeexport');
+    const list = (items && items.length) ? items : core.scene.items;
+    const box = core.boundsOf(list);
+    if (!box) return null;
+    const ratio = pixelRatio || 2;
+    const pad = 8;
+    const output = document.createElement('canvas');
+    output.width = Math.max(1, Math.ceil((box.w + pad * 2) * ratio));
+    output.height = Math.max(1, Math.ceil((box.h + pad * 2) * ratio));
+    const onscreen = core.context;
+    core.context = output.getContext('2d');
+    core.exporting = true;   // the document's own colours, not the ones the theme shows
+    core.context.setTransform(ratio, 0, 0, ratio, 0, 0);
+    core.context.fillStyle = '#ffffff';   // an exported picture carries its own paper
+    core.context.fillRect(0, 0, output.width, output.height);
+    core.context.translate(pad - box.x, pad - box.y);
+    for (const item of list) core.drawItem(item);
+    core.exporting = false;
+    core.context = onscreen;
+    return output;
+  }
+
+  Object.assign(core.api, { toSVG: toSVG, toPNG: toPNG });
+});
+</script>
+
+<script>
+/* Demo wiring. None of this belongs to the primitive; delete it when embedding. */
+(function () {
+  // Whatever was drawn last time, or the scene baked into the page the first time.
+  const SAVE_KEY = 'minicanvas-demo-scene';
+  const store = (() => {
+    try { window.localStorage.getItem(SAVE_KEY); return window.localStorage; }
+    catch (error) { return null; }   // private mode, a sandboxed frame, or no storage at all
+  })();
+  const saved = store && store.getItem(SAVE_KEY);
+
+  const board = MiniCanvas.mount('#board', {
+    scene: saved || '#scene'   // every feature on the page is loaded by default
+  });
+
+  const sceneText = document.getElementById('scene-text');
+  const dump = () => { sceneText.value = board.toText(); };
+  dump();
+
+  function press(buttons, active) {
+    buttons.forEach((button) => button.setAttribute('aria-pressed', String(button === active)));
+  }
+  const toolButtons = [...document.querySelectorAll('[data-tool]')];
+  const widthButtons = [...document.querySelectorAll('[data-width]')];
+  // The pen reports itself, so the keys and the buttons cannot fall out of step.
+  const fillButton = document.getElementById('fill');
+  const opacityButton = document.getElementById('opacity');
+  const opacityValue = document.getElementById('opacity-value');
+  fillButton.onclick = () => board.toggleFill();
+  opacityButton.onclick = () => board.cycleOpacity();
+
+  const colorButtons = [...document.querySelectorAll('[data-color]')];
+  toolButtons.forEach((button) => button.onclick = () => board.setTool(button.dataset.tool));
+
+  // The canvas announces tool changes, so v and the buttons stay in step.
+  document.getElementById('board').addEventListener('penchange', (event) => {
+    fillButton.setAttribute('aria-pressed', String(event.detail.fill));
+    opacityValue.textContent = Math.round(event.detail.opacity * 100) + '%';
+    press(colorButtons, colorButtons.find((button) => button.dataset.color === event.detail.color));
+    press(widthButtons, widthButtons.find((button) => Number(button.dataset.width) === event.detail.width));
+  });
+
+  document.getElementById('board').addEventListener('toolchange', (event) => {
+    press(toolButtons, toolButtons.find((button) => button.dataset.tool === event.detail));
+  });
+
+  // Picking a pen with something selected restyles it. With nothing selected you
+  // are choosing what to draw next, so hand back the draw tool and get out of the way.
+  function pickPen(color, width) {
+    const restyling = board.selection().length > 0;
+    board.setStroke(color, width);
+    if (!restyling) board.setTool('draw');
+  }
+  widthButtons.forEach((button) => button.onclick = () => {
+    pickPen(null, Number(button.dataset.width));
+    press(widthButtons, button);
+  });
+  colorButtons.forEach((button) => button.onclick = () => {
+    pickPen(button.dataset.color, null);
+    press(colorButtons, button);
+  });
+
+  // Undo and redo change the scene without recording an edit, so they say so.
+  document.getElementById('undo').onclick = () => { board.undo(); dump(); save(); };
+  document.getElementById('redo').onclick = () => { board.redo(); dump(); save(); };
+  document.getElementById('fit').onclick = () => board.fit();
+  document.getElementById('dump').onclick = dump;
+  document.getElementById('load').onclick = () => {
+    try { board.load(sceneText.value); } catch (error) { alert('That is not valid JSON: ' + error.message); }
+  };
+  document.getElementById('reset').onclick = () => {
+    if (store) try { store.removeItem(SAVE_KEY); } catch (error) { /* nothing to clear */ }
+    board.load(document.getElementById('scene').textContent);
+    dump();
+  };
+
+  const scenePanel = document.getElementById('scene-panel');
+  const sceneButton = document.getElementById('show-scene');
+  function showScenePanel(showing) {
+    scenePanel.hidden = !showing;
+    sceneButton.setAttribute('aria-pressed', String(showing));
+    if (showing) dump();
+  }
+  sceneButton.onclick = () => showScenePanel(scenePanel.hidden);
+
+  // Saving on 'change' alone is not enough. That event fires when an edit is
+  // *recorded*, which for a drag is the first frame of it: the item is where it
+  // started, not where it was dropped. Typing never records a step at all after
+  // the empty item is created, so nothing typed would ever be kept.
+  //
+  // So: save after anything that could have finished an edit, and compare the text
+  // before writing, which makes the extra calls free when nothing actually moved.
+  let lastSaved = saved || null;
+  function save() {
+    if (!store) return;
+    const text = board.toText();
+    if (text === lastSaved) return;   // nothing changed since the last write
+    lastSaved = text;
+    try { store.setItem(SAVE_KEY, text); } catch (error) { /* full, or refused */ }
+    if (!scenePanel.hidden) dump();   // keep the panel honest, but never fight a typist
+  }
+
+  board.on('change', save);              // an edit was recorded
+  // Anywhere, not just the canvas: undo and redo deliberately record no new edit,
+  // so a click on those buttons raises nothing for 'change' to hear.
+  window.addEventListener('pointerup', save);
+  window.addEventListener('keyup', save);            // a keystroke landed
+  window.addEventListener('blur', save);             // leaving the page
+  window.addEventListener('beforeunload', save);
+  function download(blob, name) {
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = name;
+    link.click();
+  }
+
+  document.getElementById('svg').onclick = () =>
+    download(new Blob([board.toSVG()], { type: 'image/svg+xml' }), 'canvas.svg');
+
+  document.getElementById('json').onclick = () =>
+    download(new Blob([board.toText()], { type: 'application/json' }), 'canvas.json');
+
+  // The toolbar follows the selection: making things while something is picked is
+  // not what you are doing, and acting on things you have not picked is not either.
+  // The canvas says what is selected and the toolbar decides what that means.
+  const toolGroup = document.getElementById('tool-group');
+  const historyGroup = document.getElementById('history-group');
+  const sceneGroup = document.getElementById('scene-group');
+  const viewGroup = document.getElementById('view-group');
+  const orderTools = document.getElementById('order-tools');
+  const alignTools = document.getElementById('align-tools');
+  const groupTools = document.getElementById('group-tools');
+  const groupButton = document.getElementById('group');
+
+  document.getElementById('board').addEventListener('selectionchange', (event) => {
+    const picked = event.detail.items > 0;
+    const grouped = board.isGrouped();
+    toolGroup.hidden = picked;      // deselect to get the tools back
+    historyGroup.hidden = picked;
+    sceneGroup.hidden = picked;
+    viewGroup.hidden = picked;
+    orderTools.hidden = !picked;                 // layer order needs one item
+    alignTools.hidden = event.detail.units < 2;  // alignment needs two things
+    // Two units to join, or one group to take apart. Nothing to do with one
+    // loose item, which can neither be grouped with itself nor ungrouped.
+    groupTools.hidden = event.detail.units < 2 && !grouped;
+    groupButton.setAttribute('aria-pressed', String(grouped));
+    groupButton.dataset.tip = (grouped ? 'Ungroup · ⌘G' : 'Group · ⌘G');
+    groupButton.setAttribute('aria-label', grouped ? 'Ungroup' : 'Group');
+    // Only rectangles and ovals can be filled, so the button only appears when one
+    // of those is picked. The F key still arms the pen with nothing selected.
+    fillButton.hidden = !board.selection().some(
+      (item) => item.type === 'rect' || item.type === 'oval');
+  });
+
+  [...document.querySelectorAll('[data-align]')].forEach((button) => button.onclick = () =>
+    board.align(button.dataset.align.split(',').map(Number)));
+  [...document.querySelectorAll('[data-center]')].forEach((button) => button.onclick = () =>
+    board.center(button.dataset.center));
+  [...document.querySelectorAll('[data-order]')].forEach((button) => button.onclick = () =>
+    board.reorder(Number(button.dataset.order)));
+  groupButton.onclick = () => board.toggleGroup();
+
+  // One download button, three formats. The menu is placed by the same code that
+  // places the tooltip, since both have to escape the scrolling toolbar.
+  const downloadButton = document.getElementById('download');
+  const downloadMenu = document.getElementById('download-menu');
+  function showMenu(showing) {
+    downloadMenu.hidden = !showing;
+    downloadButton.setAttribute('aria-expanded', String(showing));
+    if (showing) floatAbove(downloadMenu, downloadButton);
+  }
+  downloadButton.onclick = () => showMenu(downloadMenu.hidden);
+  downloadMenu.onclick = () => showMenu(false);   // whichever format was picked, we are done
+  window.addEventListener('pointerdown', (event) => {
+    // A press inside the menu must not close it. Hiding on pointerdown takes the
+    // button away before the click lands, so the click never happens and nothing
+    // downloads. The button itself is exempt too, or its own press would close the
+    // menu a moment before its click reopened it.
+    const target = event.target;
+    if (target && target.closest && target.closest('#download-menu, #download')) return;
+    showMenu(false);
+  });
+  window.addEventListener('keydown', (event) => { if (event.key === 'Escape') showMenu(false); });
+
+  // Exports the selection, or the whole scene when nothing is selected.
+  document.getElementById('png').onclick = () => {
+    const rendered = board.toPNG(board.selection(), 2);
+    if (!rendered) { alert('Nothing to export yet.'); return; }
+    try {
+      rendered.toBlob((blob) => download(blob, 'canvas.png'), 'image/png');
+    } catch (error) {
+      // A canvas holding an image from another origin cannot be read back out.
+      alert('This scene has an image from another site, which browsers refuse to export. '
+          + 'Paste or drop the image in instead of linking it.');
+    }
+  };
+
+  // Images: file picker, paste, or drop. Each becomes a data URL so the scene
+  // stays self-contained. Point `src` at a relative path instead for small files.
+  function readAsDataURL(file, world) {
+    const reader = new FileReader();
+    reader.onload = () => board.addImage(reader.result, world);
+    reader.readAsDataURL(file);
+  }
+  const picker = document.createElement('input');
+  picker.type = 'file';
+  picker.accept = 'image/*';
+  picker.onchange = () => { if (picker.files[0]) readAsDataURL(picker.files[0]); picker.value = ''; };
+  document.getElementById('add-image').onclick = () => picker.click();
+
+  // ⌘/Ctrl+U opens the same picker the button does. Some browsers reserve this
+  // combination for view-source and never let it reach the page at all, in which
+  // case the button and paste are still there.
+  window.addEventListener('keydown', (event) => {
+    if (!(event.ctrlKey || event.metaKey)) return;
+    if (event.key.toLowerCase() !== 'u' && event.code !== 'KeyU') return;
+    event.preventDefault();
+    picker.click();
+  });
+
+  window.addEventListener('paste', (event) => {
+    for (const item of event.clipboardData.files) readAsDataURL(item);
+  });
+  window.addEventListener('dragover', (event) => event.preventDefault());
+  window.addEventListener('drop', (event) => {
+    event.preventDefault();
+    for (const file of event.dataTransfer.files) readAsDataURL(file);
+  });
+
+  // A tooltip lives outside the toolbar so the bar can scroll without clipping it,
+  // which means placing it by hand against whatever is hovered.
+  const tip = document.getElementById('tip');
+  function floatAbove(element, anchor) {
+    const box = anchor.getBoundingClientRect();
+    element.hidden = false;
+    const width = element.offsetWidth || 0;
+    element.style.left = Math.round(Math.max(8, Math.min(window.innerWidth - width - 8,
+      box.left + box.width / 2 - width / 2))) + 'px';
+    element.style.top = Math.round(box.top - (element.offsetHeight || 0) - 8) + 'px';
+  }
+  function showTip(target) {
+    if (!target || !target.dataset || !target.dataset.tip) { tip.classList.remove('here'); return; }
+    tip.textContent = target.dataset.tip;
+    floatAbove(tip, target);
+    tip.classList.add('here');
+  }
+  document.body.addEventListener('pointerover', (event) =>
+    showTip(event.target.closest ? event.target.closest('[data-tip]') : null));
+  document.body.addEventListener('pointerout', () => tip.classList.remove('here'));
+  document.body.addEventListener('pointerdown', () => tip.classList.remove('here'));
+
+  // ⌘. gets the chrome out of the way. The bar and the pill that brings it back
+  // are the same toggle, so there is only one piece of state to be wrong about.
+  const toolbar = document.getElementById('toolbar');
+  const peek = document.getElementById('peek');
+  const showToolbar = (showing) => {
+    toolbar.classList.toggle('away', !showing);
+    peek.classList.toggle('here', !showing);
+  };
+  const hideButton = document.getElementById('hide');
+  hideButton.onclick = () => showToolbar(false);
+  peek.onclick = () => showToolbar(true);
+  window.addEventListener('keydown', (event) => {
+    if (!(event.ctrlKey || event.metaKey)) return;
+    if (event.key !== '.' && event.code !== 'Period') return;
+    showToolbar(toolbar.classList.contains('away'));
+    event.preventDefault();
+  });
+
+  // Which tool, which pen, and what the chrome looked like. Kept under its own key:
+  // this is how the page was left, not what was drawn, and the two are worth being
+  // able to clear apart from each other.
+  const UI_KEY = 'minicanvas-demo-toolbar';
+
+  function saveToolbar() {
+    if (!store) return;
+    const pen = board.pen();
+    try {
+      store.setItem(UI_KEY, JSON.stringify({
+        tool: board.tool(),
+        color: pen.color, width: pen.width, opacity: pen.opacity, fill: pen.fill,
+        toolbar: !toolbar.classList.contains('away'),
+        panel: !scenePanel.hidden
+      }));
+    } catch (error) { /* full, or refused */ }
+  }
+
+  function restoreToolbar() {
+    let state = null;
+    try { state = JSON.parse((store && store.getItem(UI_KEY)) || 'null'); }
+    catch (error) { state = null; }   // whatever is in there, it is not ours
+    if (!state) return;
+    // Opacity and fill have no setter of their own, so they go on directly and
+    // setStroke does the announcing for all four at once.
+    if (typeof state.opacity === 'number') board.core.strokeOpacity = state.opacity;
+    board.core.fillOn = !!state.fill;
+    board.setStroke(state.color, state.width);
+    if (state.tool) board.setTool(state.tool);
+    showToolbar(state.toolbar !== false);
+    showScenePanel(!!state.panel);
+  }
+
+  restoreToolbar();
+  board.on('toolchange', saveToolbar);
+  board.on('penchange', saveToolbar);
+  hideButton.onclick = () => { showToolbar(false); saveToolbar(); };
+  peek.onclick = () => { showToolbar(true); saveToolbar(); };
+  sceneButton.onclick = () => { showScenePanel(scenePanel.hidden); saveToolbar(); };
+  window.addEventListener('keyup', saveToolbar);   // ⌘. and the letter shortcuts
+})();
+</script>
+</html>
