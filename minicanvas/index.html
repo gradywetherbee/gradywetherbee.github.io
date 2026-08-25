@@ -1741,16 +1741,16 @@ createMiniCanvas.plugin('select', [], function (core) {
   const padded = core.padded = (box, pad) =>
     ({ x: box.x - pad, y: box.y - pad, w: box.w + pad * 2, h: box.h + pad * 2 });
 
-  // The frame drawn around a selection, and the space its handles live in. One
+  // The frame drawn around a set of items, and the space its handles live in. One
   // rotated item gets a frame that turns with it; anything else gets an upright
   // box around the lot, since several angles have no single frame to share.
   // `box` is what you see: the outside edge of the ink, with no padding at all.
   // `content` is where the coordinates are, and is what a resize anchors to, so the
   // two stay separate even though the frame is drawn on the first.
-  core.selectionFrame = () => {
-    const items = [...selection];
-    if (!items.length) return null;
-    const only = items.length === 1 ? items[0] : null;
+  const frameOf = core.frameOf = (items) => {
+    const list = [...items];
+    if (!list.length) return null;
+    const only = list.length === 1 ? list[0] : null;
     if (only && only.angle) {
       const local = core.itemBox(only);
       if (local) return {
@@ -1758,13 +1758,15 @@ createMiniCanvas.plugin('select', [], function (core) {
         center: { x: local.x + local.w / 2, y: local.y + local.h / 2 }
       };
     }
-    const content = core.boundsOf(selection);
+    const content = core.boundsOf(list);
     if (!content) return null;
     return {
-      box: core.visualBounds(selection) || content, content: content, angle: 0,
+      box: core.visualBounds(list) || content, content: content, angle: 0,
       center: { x: content.x + content.w / 2, y: content.y + content.h / 2 }
     };
   };
+
+  core.selectionFrame = () => frameOf(selection);
 
   // A world point in the frame's own upright space. Everything about handles is
   // decided there, so a turned frame needs no special cases downstream.
@@ -1951,13 +1953,30 @@ createMiniCanvas.plugin('select', [], function (core) {
     context.fillStyle = core.cssColor('--handle-fill', '#ffffff');
     context.lineWidth = 1.5 * unit;
 
+    // Turning the canvas means a frame and its handles are laid out upright and
+    // land rotated, with no per-corner trigonometry.
+    const inFrameSpace = (frame, draw) => {
+      context.save();
+      if (frame.angle) {
+        context.translate(frame.center.x, frame.center.y);
+        context.rotate(core.radiansOf(frame.angle));
+        context.translate(-frame.center.x, -frame.center.y);
+      }
+      draw();
+      context.restore();
+    };
+    const outline = (frame) => inFrameSpace(frame,
+      () => context.strokeRect(frame.box.x, frame.box.y, frame.box.w, frame.box.h));
+
     // What the cursor is over gets the outline and nothing else: handles would
-    // invite a drag that hovering has not earned.
+    // invite a drag that hovering has not earned. It is the same frame the click
+    // would land in, turned item and all, so the box always promises what the
+    // press will actually take.
     if (hovered) {
-      const box = core.visualBounds(core.membersOf(hovered));
-      if (box) {
+      const frame = core.frameOf(core.membersOf(hovered));
+      if (frame) {
         context.globalAlpha = 0.6;
-        context.strokeRect(box.x, box.y, box.w, box.h);
+        outline(frame);
         context.globalAlpha = 1;
       }
     }
@@ -1972,22 +1991,15 @@ createMiniCanvas.plugin('select', [], function (core) {
     // group is one thing until you take it apart.
     if (selection.size > 1 && !(core.selectionIsOneGroup && core.selectionIsOneGroup())) {
       for (const item of selection) {
-        const box = core.visualBounds([item]);
-        if (box) context.strokeRect(box.x, box.y, box.w, box.h);
+        const own = core.frameOf([item]);
+        if (own) outline(own);
       }
     }
     const frame = core.selectionFrame();
-    if (frame) {
-      // Turning the canvas means the frame and its handles are drawn upright and
-      // land rotated, with no per-corner trigonometry.
-      if (frame.angle) {
-        context.translate(frame.center.x, frame.center.y);
-        context.rotate(core.radiansOf(frame.angle));
-        context.translate(-frame.center.x, -frame.center.y);
-      }
+    if (frame) inFrameSpace(frame, () => {
       context.strokeRect(frame.box.x, frame.box.y, frame.box.w, frame.box.h);
       core.fire('handles', frame, context);
-    }
+    });
     context.restore();
     return false;
   });
@@ -2133,6 +2145,13 @@ createMiniCanvas.plugin('transform', ['select'], function (core) {
         x: handle.anchor.x > frame.content.x + frame.content.w / 2 ? 1 : 0,
         y: handle.anchor.y > frame.content.y + frame.content.h / 2 ? 1 : 0
       },
+      // Where the anchor is on screen at the moment of the press. A turned item
+      // spins about its own centre, and scaling moves that centre, so holding the
+      // anchor still in the item's own space is not enough to hold it still on
+      // screen. This is the fixed point the whole drag is measured back to: taking
+      // it from the frame before instead would re-aim at a target that has itself
+      // just moved, and the item would crawl away from the pointer.
+      home: core.spinPoint(handle.anchor, frame.center, frame.angle),
       // Scale the original geometry every frame instead of the last frame's, so a
       // long drag can't accumulate rounding error.
       items: snapshot()
@@ -2151,7 +2170,6 @@ createMiniCanvas.plugin('transform', ['select'], function (core) {
     if (keepAspect && !resize.axis) scaleX = scaleY = Math.max(scaleX, scaleY);
 
     const list = resize.items.map((entry) => entry.item);
-    const centersBefore = resize.angle ? list.map(core.itemCenter) : null;
     for (const entry of resize.items) {
       restoreOriginal(entry);
       const item = entry.item;
@@ -2175,12 +2193,13 @@ createMiniCanvas.plugin('transform', ['select'], function (core) {
       if (dx || dy) for (const item of list) core.transformItem(item, (x, y) => [x + dx, y + dy]);
     }
 
-    // A rotated item spins about its own centre, and that centre just moved. Shift
-    // it back so the corner you are not dragging stays put on screen too.
-    if (resize.angle && centersBefore) {
-      const was = core.spinPoint(anchor, centersBefore[0], resize.angle);
+    // The anchor is back where it belongs in the item's own space; this puts it
+    // back where it belongs on screen, which for a turned item is not the same
+    // thing. Only a lone item is ever framed at an angle, so there is only ever
+    // one centre to answer for.
+    if (resize.angle) {
       const now = core.spinPoint(anchor, core.itemCenter(list[0]), resize.angle);
-      core.transformItem(list[0], (x, y) => [x + was.x - now.x, y + was.y - now.y]);
+      core.transformItem(list[0], (x, y) => [x + resize.home.x - now.x, y + resize.home.y - now.y]);
     }
     core.requestRedraw();
   }

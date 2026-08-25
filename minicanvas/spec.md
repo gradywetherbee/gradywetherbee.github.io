@@ -145,7 +145,7 @@ the file format and nothing about tools. Everything else registers itself by nam
 | **editing** | | | |
 | `pens` | 0.9K | — | `setStroke`, restyling a selection |
 | `select` | 2.1K | — | selection, marquee, drag, delete, the frame |
-| `transform` | 1.8K | select | resize and rotation handles |
+| `transform` | 1.8K | select | resize corners and edges, rotation handle, cursors |
 | `groups` | 0.6K | select | ctrl/cmd + `g` |
 | `arrange` | 1.1K | select | alignment and layer order |
 | `erase` | 0.3K | — | the erase tool |
@@ -301,7 +301,7 @@ concern and always works whether or not any tool plugin is loaded.
 | `f` | Toggle fill. With shapes selected it fills or unfills them; with nothing selected it arms the pen for what you draw next. |
 | `g` | Cycle opacity: 70%, 50%, 30%, 10%, and back to opaque. Applies to every selected item, whatever its type. |
 | `c` | Step to the next of the six pens. With something selected it follows that item's colour, so the cycle picks up where what you are looking at already sits. |
-| `shift` (hold) | While drawing a rect or oval, constrain to a square. While dragging a resize handle, keep the aspect ratio. While dragging the rotation handle, snap to 15°. While clicking with select, add or remove one item. While nudging, move 10 units instead of 1. With `[` or `]`, move one layer instead of all the way. |
+| `shift` (hold) | While drawing a rect or oval, constrain to a square. While dragging a corner handle, keep the aspect ratio; an edge drag is one axis by definition, so shift has nothing to hold. While dragging the rotation handle, snap to 15°. While clicking with select, add or remove one item. While nudging, move 10 units instead of 1. With `[` or `]`, move one layer instead of all the way. |
 | arrows | Nudge the selection 1 unit, or 10 with shift. One undo step per key press, not per repeat. |
 | arrows, while typing | Move the caret. Shift extends a selected run, Home and End jump to the ends, and a plain arrow with a run selected collapses to its edge. |
 | `[` / `]` | Send the selection to the back or bring it to the front. Shift moves one layer instead. Multiple items move as a block and keep their order among themselves. A move that changes nothing records no undo step. Shifted brackets arrive as `{` and `}` on most layouts, and both spellings are accepted. |
@@ -330,8 +330,10 @@ tool shortcuts are just letters again.
 | click an item, select tool | Select it, or its whole group. Shift-click adds or removes. |
 | drag from empty canvas, select tool | Box-select everything the rectangle touches |
 | drag from an item, select tool | Move the whole selection |
+| drag inside a selected item | Move the whole selection, even where the item itself is hollow and catches nothing |
 | alt/option drag from an item | Leave the original in place and drag a copy of the selection |
 | drag a corner handle | Resize the whole selection, anchored to the opposite corner |
+| drag an edge of the frame | Stretch the selection along that one axis, anchored to the opposite edge. Anywhere along the edge works; it has no handle of its own. |
 | drag the round handle above the box | Rotate the whole selection about its centre |
 | wheel or two-finger scroll | Pan |
 | ctrl/cmd + wheel, or pinch | Zoom toward the pointer, clamped between 0.05x and 40x |
@@ -366,7 +368,10 @@ frame first, so the hit region turns with what you see.
 ## Selection
 
 - Selected items get a solid blue outline (`#1a73ff`) with white corner squares.
-  Handles stay 9 screen pixels at every zoom.
+  The outline is 1.5 screen pixels and the handles 9, at every zoom. The edges
+  carry no squares of their own, though they are draggable: four more handles would
+  crowd a small selection out of existence, and the frame is already a line in
+  exactly the right place.
 - **The outline sits flush against the ink, with no padding.** A stroke's centreline
   is not its edge: half the pen width spills outside on every side, so a box drawn
   on the raw coordinates cuts through the middle of a thick line. `visualBounds()`
@@ -385,14 +390,20 @@ frame first, so the hit region turns with what you see.
 - One rotated item gets a frame that turns with it: the outline, the four handles,
   and the rotation stalk are all drawn in the item's own space, so they sit on the
   item rather than around a box it happens to fit inside. Any other selection gets
-  an upright frame, since several angles have no single frame to share.
+  an upright frame, since several angles have no single frame to share. The
+  per-item outlines in a multiple selection are frames in their own right, so each
+  one turns with its own item even though the box around the lot stays upright.
 - Strokes are box-selected by their points, not their bounding box, so a marquee
   beside a long diagonal misses it. Images, rects, and ovals use their box.
 - **Hovering an item outlines it**, at 60% opacity and with no handles: handles
   would invite a drag that hovering has not earned. It follows a group, skips
   anything already selected, and only happens with the select tool.
+- **The hover outline is the same frame the selection would draw**, built the same
+  way and turned the same way. A box that hugged a tilted item loosely, upright,
+  would promise a different thing from the one the click is about to take.
 - A marquee needs real area before it selects. A plain click on empty canvas clears
-  the selection instead.
+  the selection instead. Empty canvas means outside every selected item: pressing
+  inside one is a move.
 - Catching one member of a group with a marquee catches the group.
 - Selection lives outside the scene and is never serialised.
 - Picking a color or width with something selected restyles every selected item
@@ -444,6 +455,15 @@ frame first, so the hit region turns with what you see.
   content, but they anchor to the real content corner. Anchoring to the padded
   corner drifts everything by the padding times the scale factor, which is the bug
   this rule exists to prevent.
+- **An edge stretches one axis and leaves the other exactly alone**, anchored to the
+  opposite edge. It is the same drag as a corner with one of the two scales pinned
+  at 1, so everything below holds for it too. An edge is grabbed anywhere along its
+  length rather than at a handle.
+- **Handles and edges answer for the selection and nothing else.** With something
+  else under the pointer, the press picks that up instead: a frame edge running past
+  an unrelated shape never steals it. And since the body of a selected item is a
+  move, an unfilled shape whose only hit region is its outline is still draggable
+  once the frame has taken that outline over.
 - The scale factor is measured from where the pointer went down, not from the handle
   position, so it starts at exactly 1 and nothing jumps on the first frame.
 - Every frame scales the geometry captured when the drag started, not the previous
@@ -466,10 +486,23 @@ frame first, so the hit region turns with what you see.
   and snapping the delta instead would leave a crooked thing permanently crooked.
   One boxed item knows its own angle to measure from. A stroke or a mixed selection
   does not, so for those the snap counts from where the drag started.
-- Resizing a rotated item works in the item's own space, so a corner drag scales
-  along the axes you see. Handles are hit-tested there too, and a rotated item's
-  centre is the pivot, so after scaling the item is shifted back to keep the
-  anchored corner still on screen.
+- Resizing a rotated item works in the item's own space, so a drag scales along the
+  axes you see rather than the ones the screen has. Handles and edges are hit-tested
+  there too.
+- **A rotated item is pinned by where its anchor was on screen when the press
+  landed.** An item spins about its own centre, and scaling moves that centre, so
+  holding the anchor still in the item's own space is not enough to hold it still
+  where you are looking. The screen position is captured once, at the press, and
+  every frame ends by sliding the item back onto it. Measuring against the frame
+  before instead aims at a target that has itself just moved: the item then crawls
+  away from the pointer a little per frame, which reads as a side drag growing both
+  dimensions and a corner drifting off the cursor.
+- The cursor says which of these a press would be, since an edge draws nothing to
+  advertise itself. It is the handle's outward direction turned by the frame's own
+  angle and rounded to the nearest 45°, so a tilted frame gets the arrow that
+  matches the way its edge will really move: on a frame turned 45°, the right edge
+  reads `nwse-resize` and the bottom-right corner reads `ns-resize`. It comes from
+  the same hit test the press uses, so the two cannot promise different things.
 - Both drags scale or turn the geometry captured when the drag started. Restoring
   that snapshot also removes fields the snapshot did not have, or an `angle` added
   on one frame would accumulate on the next.
@@ -688,8 +721,10 @@ Each one is marked with a `ponytail:` comment in the source.
   pinching reach a given zoom together rather than drifting apart.
 - Undo and redo store whole-scene JSON snapshots, capped at 60. Fine at this scale;
   a real document would want a command log.
-- Resize is corner-only. No edge handles.
-- The selection outline around several items at different angles is an upright box.
+- An edge is a grab zone with no handle drawn on it, so nothing but the cursor says
+  it can be dragged.
+- The selection outline around several items at different angles is an upright box,
+  even though each item inside it gets an outline of its own that turns.
 - Text is a single line with no wrapping. There is a caret, arrow movement, and
   selected runs, but no word jumps and no IME support.
 - Grouping is one level deep and stores no order of its own.
@@ -766,11 +801,18 @@ Deliberately absent, with the trigger that would justify adding each:
 - Pan renamed Hand with its own `h` shortcut; the opacity button carries an icon;
   tooltips for thickness, colour, and opacity all read "_key_ to cycle"; add image
   moved into the tool group and gained ctrl/cmd + `u`.
+- Dragging an edge of the frame stretches one axis, with a resize cursor on every
+  edge and corner that turns with the frame, a slightly heavier selection outline,
+  and the body of a selected item as a place to grab it by.
 
 Fixed along the way: dots were unerasable, a bare click box-selected anything whose
 bounding box contained the point, space stopped panning once a toolbar button took
 focus, the eraser reached 8 pixels past the edge of whatever it was erasing, resizing
 dragged the anchored corner along with it, resizing text from a left or top handle
 dragged the opposite edge because a measured width does not scale in step with a
-scaled position, and a rotation drag accumulated its angle frame over frame because
-restoring a snapshot could not remove a field the snapshot never had.
+scaled position, a rotation drag accumulated its angle frame over frame because
+restoring a snapshot could not remove a field the snapshot never had, resizing a
+rotated item measured back to the frame before rather than to where the anchor was
+when the press landed, so the item crawled away from the pointer, and the hover
+outline was an upright box while the click it stood for was tested in the item's own
+turned space.
