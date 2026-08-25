@@ -1779,6 +1779,35 @@ createMiniCanvas.plugin('select', [], function (core) {
     core.requestRedraw();
   }
 
+  const itemUnder = (world) =>
+    core.scene.items[core.itemIndexAt(world, core.GRAB_SLOP / core.scene.view.scale)];
+
+  // Handles answer for what is already selected and nothing else. Something not in
+  // the selection under the pointer is asking to be picked up, and picking it up
+  // beats resizing whatever a frame edge happens to run past.
+  core.handlesAnswer = (world) => {
+    const item = itemUnder(world);
+    return !item || selection.has(item);
+  };
+
+  // The body of a selected item, which is a move even where the item itself has
+  // nothing to hit: an unfilled shape answers only to its outline, and the frame
+  // edge has taken that over for resizing.
+  const insideSelected = (world) => {
+    for (const item of selection) {
+      const box = core.itemBox(item);
+      if (!box) continue;                  // a stroke is a line, with no body to grab
+      const pad = core.inkPad(item);
+      const local = item.angle
+        ? core.toFrame(world, { angle: item.angle,
+                                center: { x: box.x + box.w / 2, y: box.y + box.h / 2 } })
+        : world;
+      if (local.x >= box.x - pad && local.x <= box.x + box.w + pad
+       && local.y >= box.y - pad && local.y <= box.y + box.h + pad) return true;
+    }
+    return false;
+  };
+
   // Drag deltas are sub-0.1 at high zoom, so round once the drag ends, not per frame.
   core.roundSelection = () => {
     for (const item of selection) {
@@ -1834,10 +1863,10 @@ createMiniCanvas.plugin('select', [], function (core) {
   core.on('pointerdown', (event, at) => {
     if (core.tool !== 'select') return false;
     hovered = null;   // the click resolves it one way or the other
-    if (core.fire('handledown', event, at)) return true;   // resize and rotate get first refusal
+    // Resize and rotate get first refusal, but only over their own selection.
+    if (core.handlesAnswer(at.world) && core.fire('handledown', event, at)) return true;
 
-    const index = core.itemIndexAt(at.world, core.GRAB_SLOP / core.scene.view.scale);
-    const item = index < 0 ? null : core.scene.items[index];
+    const item = itemUnder(at.world) || null;
     if (item) {
       if (core.fire('claim', item, at)) return true;       // text opens for editing instead
       core.selectItem(item, event.shiftKey);
@@ -1848,6 +1877,9 @@ createMiniCanvas.plugin('select', [], function (core) {
         dragRemembered = false;
         isDragging = selection.has(item);
       }
+    } else if (!event.shiftKey && insideSelected(at.world)) {
+      dragRemembered = false;
+      isDragging = true;
     } else {
       if (!event.shiftKey) selection.clear();
       marquee = { x1: at.world.x, y1: at.world.y, x2: at.world.x, y2: at.world.y };
@@ -1913,11 +1945,11 @@ createMiniCanvas.plugin('select', [], function (core) {
   core.on('overlay', () => {
     if (!selection.size && !marquee && !hovered) return false;
     const context = core.context;
-    const unit = 1 / core.scene.view.scale;   // keep outlines one screen pixel at any zoom
+    const unit = 1 / core.scene.view.scale;   // a screen pixel, whatever the zoom
     context.save();
     context.strokeStyle = core.cssColor('--selection', '#1a73ff');
     context.fillStyle = core.cssColor('--handle-fill', '#ffffff');
-    context.lineWidth = unit;
+    context.lineWidth = 1.5 * unit;
 
     // What the cursor is over gets the outline and nothing else: handles would
     // invite a drag that hovering has not earned.
@@ -1996,9 +2028,9 @@ createMiniCanvas.plugin('select', [], function (core) {
   });
 });
 
-/* transform — the handles on a selection: four corners to resize, one stalk to
-   rotate. Both work in the frame's own space, so a turned selection scales along
-   the axes you see.
+/* transform — the handles on a selection: four corners to resize, four edges to
+   stretch one axis, one stalk to rotate. All of them work in the frame's own
+   space, so a turned selection scales and stretches along the axes you see.
    Needs: core, select. */
 createMiniCanvas.plugin('transform', ['select'], function (core) {
   const ROTATE_REACH = 22;   // screen pixels above the box for the spin handle
@@ -2009,16 +2041,69 @@ createMiniCanvas.plugin('transform', ['select'], function (core) {
   // Each corner drags against the opposite one, which must stay exactly put. The
   // handles sit on the padded box you can see, but they anchor to the real content
   // corner: anchoring to the padded corner would drift everything by the padding.
+  // `push` is the way the corner faces, which is all the cursor needs to know.
   function handleCorners(box, anchorBox) {
     const source = anchorBox || box;
     const right = box.x + box.w, bottom = box.y + box.h;
     const holdRight = source.x + source.w, holdBottom = source.y + source.h;
     return [
-      { x: box.x, y: box.y,   anchor: { x: holdRight, y: holdBottom } },
-      { x: right, y: box.y,   anchor: { x: source.x,  y: holdBottom } },
-      { x: box.x, y: bottom,  anchor: { x: holdRight, y: source.y } },
-      { x: right, y: bottom,  anchor: { x: source.x,  y: source.y } }
+      { x: box.x, y: box.y,   push: { x: -1, y: -1 }, anchor: { x: holdRight, y: holdBottom } },
+      { x: right, y: box.y,   push: { x: 1,  y: -1 }, anchor: { x: source.x,  y: holdBottom } },
+      { x: box.x, y: bottom,  push: { x: -1, y: 1 },  anchor: { x: holdRight, y: source.y } },
+      { x: right, y: bottom,  push: { x: 1,  y: 1 },  anchor: { x: source.x,  y: source.y } }
     ];
+  }
+
+  // The edges, each dragging against the opposite one and leaving the other axis
+  // alone. An edge is grabbed anywhere along its length and draws nothing of its
+  // own: the frame is already a line in exactly the right place, and four more
+  // squares on it would crowd a small selection out of existence.
+  //
+  // Only the anchor's coordinate on the dragged axis is doing any work. The other
+  // one is a real content edge all the same, so `side` reads it the same way it
+  // reads a corner's.
+  function handleEdges(box, anchorBox) {
+    const source = anchorBox || box;
+    const right = box.x + box.w, bottom = box.y + box.h;
+    const holdRight = source.x + source.w, holdBottom = source.y + source.h;
+    return [
+      { axis: 'x', at: box.x, from: box.y, to: bottom, push: { x: -1, y: 0 },
+        anchor: { x: holdRight, y: source.y } },
+      { axis: 'x', at: right, from: box.y, to: bottom, push: { x: 1, y: 0 },
+        anchor: { x: source.x, y: source.y } },
+      { axis: 'y', at: box.y, from: box.x, to: right, push: { x: 0, y: -1 },
+        anchor: { x: source.x, y: holdBottom } },
+      { axis: 'y', at: bottom, from: box.x, to: right, push: { x: 0, y: 1 },
+        anchor: { x: source.x, y: source.y } }
+    ];
+  }
+
+  // What a press would take hold of, in the frame's own space, or null for the
+  // plain canvas. One answer serves both the press and the cursor drawn while
+  // hovering, so the two can never promise different things.
+  function handleAt(local, frame) {
+    const reach = core.HANDLE_SIZE / core.scene.view.scale;
+    const corner = handleCorners(frame.box, frame.content).find(
+      (point) => Math.abs(point.x - local.x) < reach && Math.abs(point.y - local.y) < reach);
+    if (corner) return corner;
+    // Corners answer first, so the ends of an edge belong to the corner sitting
+    // there and the edge speaks only for the length between them.
+    return handleEdges(frame.box, frame.content).find((edge) => {
+      const across = edge.axis === 'x' ? local.x : local.y;
+      const along = edge.axis === 'x' ? local.y : local.x;
+      return Math.abs(across - edge.at) < reach
+          && along > edge.from - reach && along < edge.to + reach;
+    }) || null;
+  }
+
+  // Eight cursors around the compass, one per 45°, so a turned frame is grabbed
+  // with the arrow pointing the way the edge will actually go. Only four names
+  // exist, since each one covers a direction and its opposite.
+  const RESIZE_CURSORS = ['ew-resize', 'nwse-resize', 'ns-resize', 'nesw-resize'];
+  function resizeCursor(handle, angle) {
+    const facing = Math.atan2(handle.push.y, handle.push.x) + core.radiansOf(angle || 0);
+    const sector = Math.round(facing / (Math.PI / 4));
+    return RESIZE_CURSORS[((sector % 4) + 4) % 4];
   }
 
   const rotationHandle = (box) =>
@@ -2037,6 +2122,7 @@ createMiniCanvas.plugin('transform', ['select'], function (core) {
   function startResize(handle, world, frame) {
     resize = {
       anchor: handle.anchor,          // in the frame's own space, on the content corner
+      axis: handle.axis || null,      // an edge stretches this one; a corner both
       // Measured from where the pointer actually went down, so the scale starts at
       // exactly 1 and nothing jumps on the first frame.
       from: core.toFrame(world, frame),
@@ -2058,9 +2144,11 @@ createMiniCanvas.plugin('transform', ['select'], function (core) {
     const local = core.toFrame(world, resize);
     const spanX = resize.from.x - anchor.x;
     const spanY = resize.from.y - anchor.y;
-    let scaleX = spanX ? Math.max(0.02, (local.x - anchor.x) / spanX) : 1;
-    let scaleY = spanY ? Math.max(0.02, (local.y - anchor.y) / spanY) : 1;
-    if (keepAspect) scaleX = scaleY = Math.max(scaleX, scaleY);
+    let scaleX = (spanX && resize.axis !== 'y') ? Math.max(0.02, (local.x - anchor.x) / spanX) : 1;
+    let scaleY = (spanY && resize.axis !== 'x') ? Math.max(0.02, (local.y - anchor.y) / spanY) : 1;
+    // Shift holds the ratio on a corner. An edge drag is one axis by definition, so
+    // there is no ratio left to hold and shift has nothing to say.
+    if (keepAspect && !resize.axis) scaleX = scaleY = Math.max(scaleX, scaleY);
 
     const list = resize.items.map((entry) => entry.item);
     const centersBefore = resize.angle ? list.map(core.itemCenter) : null;
@@ -2152,11 +2240,23 @@ createMiniCanvas.plugin('transform', ['select'], function (core) {
     const near = (point) => Math.abs(point.x - local.x) < reach && Math.abs(point.y - local.y) < reach;
     dragRemembered = false;
     if (near(rotationHandle(frame.box))) { startRotation(at.world); return true; }
-    const corner = handleCorners(frame.box, frame.content).find(near);
-    if (!corner) return false;
-    startResize(corner, at.world, frame);
+    const handle = handleAt(local, frame);
+    if (!handle) return false;
+    startResize(handle, at.world, frame);
     return true;
   });
+
+  // The only hint that an edge can be dragged at all, since edges draw nothing.
+  // Hover does not fire while a button is down, so the cursor chosen on the way in
+  // is the one the whole drag keeps.
+  core.on('hover', (event, at) => {
+    const frame = (at && core.tool === 'select' && core.handlesAnswer(at.world))
+      ? core.selectionFrame() : null;
+    const handle = frame && handleAt(core.toFrame(at.world, frame), frame);
+    if (handle) core.canvas.style.cursor = resizeCursor(handle, frame.angle);
+    else core.applyCursor();
+    return false;
+  }, 20);
 
   core.on('pointermove', (event, at) => {
     if (!rotation && !resize) return false;
