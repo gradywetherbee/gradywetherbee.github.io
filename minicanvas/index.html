@@ -14,13 +14,9 @@
 <link rel="apple-touch-icon" sizes="180x180" href="../apple-touch-icon.png">
 <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32x32.png">
 <link rel="icon" type="image/png" sizes="16x16" href="../favicon-16x16.png">
-<!-- Material Symbols. The only network dependency on this page, and it belongs to
-     the demo chrome rather than to minicanvas: every button keeps an aria-label,
-     so if the font never arrives the buttons still say what they are. -->
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200">
+<!-- No font, and no network at all: the icons are an SVG sprite further down the
+     page. Every icon button keeps its aria-label all the same, since a picture is
+     not a name. -->
 
 <style>
   /* Every colour is oklch, with a hex declared first so a browser older than oklch
@@ -126,16 +122,15 @@
   button:focus-visible { outline: 2px solid var(--selection); outline-offset: 1px; }
   button[aria-pressed="true"] { background: var(--ink); color: var(--surface); }
 
-  /* A pressed tool shows a filled glyph, which reads at a glance in a way that a
-     background tint alone does not. */
-  button[aria-pressed="true"] .icon { font-variation-settings: 'FILL' 1; }
+  /* The sprite is a definition, not a picture: it is pointed at, never shown. */
+  .sprite { display: none; }
+
+  /* Colour comes from the button, which is what lets a pressed one invert
+     without the icon knowing anything about it: every glyph is one fill and
+     inherits it. */
   .icon {
-    font-family: 'Material Symbols Outlined';
-    font-variation-settings: 'FILL' 0;
-    font-size: 20px; line-height: 1; font-weight: normal; font-style: normal;
-    letter-spacing: normal; white-space: nowrap; direction: ltr;
-    -webkit-font-feature-settings: 'liga'; font-feature-settings: 'liga';
-    -webkit-font-smoothing: antialiased;
+    width: 20px; height: 20px; flex: 0 0 auto; display: block;
+    fill: currentColor;
   }
 
   .swatch {
@@ -199,7 +194,7 @@
     transition: opacity .15s ease, transform .15s ease;
   }
   .top-chrome.away { opacity: 0; transform: translateY(-8px); pointer-events: none; }
-  #doc-button { left: 12px; max-width: min(320px, 45vw); justify-content: flex-start; }
+  #doc-button { left: 12px; max-width: min(480px, 67vw); justify-content: flex-start; }
   #doc-button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   #search-button { right: 12px; }
 
@@ -208,7 +203,7 @@
     background: var(--surface); border: 1px solid var(--rule); border-radius: 10px;
     box-shadow: 0 6px 24px var(--shadow);
   }
-  #doc-panel { left: 12px; width: min(260px, calc(100vw - 24px)); }
+  #doc-panel { left: 12px; width: min(480px, calc(100vw - 24px)); }
   #search-panel { right: 12px; width: min(560px, calc(100vw - 24px)); }
   #doc-panel[hidden], #search-panel[hidden] { display: none; }
 
@@ -262,7 +257,7 @@
      a hole in it. */
   .list .side { width: 24px; min-width: 24px; height: 24px; padding: 0; background: var(--chrome); }
   .list .side:hover, .list .side:focus-visible { background: var(--rule); }
-  .list .side .icon { font-size: 16px; }
+  .list .side .icon { width: 16px; height: 16px; }
   /* Naming something: the field takes the row and the check mark sits on the end,
      out in the open rather than on hover, because it is the way out of the state. */
   .list .doc-row.editing { gap: 4px; }
@@ -271,28 +266,74 @@
   .empty { padding: 6px 8px; opacity: .55; }
 </style>
 
+<!-- The icons: the official Material Symbols Outlined glyphs, fetched from
+     google/material-design-icons (Apache License 2.0) and inlined here so nothing
+     is drawn at runtime and nothing is fetched. Each is a single filled path on
+     Material's own viewBox, which a <symbol> carries independently of the sprite
+     that holds it, so <use> scales every glyph correctly without any conversion.
+     Colour comes from the button via `fill: currentColor` on .icon, the same way
+     a pressed one inverts without the icon knowing anything about it. -->
+<svg class="sprite" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+  <symbol id="i-align_horizontal_center" viewBox="0 -960 960 960"><path d="M440-80v-200H240v-120h200v-160H120v-120h320v-200h80v200h320v120H520v160h200v120H520v200h-80Z"/></symbol>
+  <symbol id="i-align_horizontal_left" viewBox="0 -960 960 960"><path d="M80-80v-800h80v800H80Zm160-200v-120h400v120H240Zm0-280v-120h640v120H240Z"/></symbol>
+  <symbol id="i-align_horizontal_right" viewBox="0 -960 960 960"><path d="M800-80v-800h80v800h-80ZM320-280v-120h400v120H320ZM80-560v-120h640v120H80Z"/></symbol>
+  <symbol id="i-align_vertical_bottom" viewBox="0 -960 960 960"><path d="M80-80v-80h800v80H80Zm200-160v-640h120v640H280Zm280 0v-400h120v400H560Z"/></symbol>
+  <symbol id="i-align_vertical_center" viewBox="0 -960 960 960"><path d="M280-120v-320H80v-80h200v-320h120v320h160v-200h120v200h200v80H680v200H560v-200H400v320H280Z"/></symbol>
+  <symbol id="i-align_vertical_top" viewBox="0 -960 960 960"><path d="M280-80v-640h120v640H280Zm280-240v-400h120v400H560ZM80-800v-80h800v80H80Z"/></symbol>
+  <symbol id="i-arrow_selector_tool" viewBox="0 -960 960 960"><path d="m320-410 79-110h170L320-716v306ZM551-80 406-392 240-160v-720l560 440H516l144 309-109 51ZM399-520Z"/></symbol>
+  <symbol id="i-cell_merge" viewBox="0 -960 960 960"><path d="M120-120v-240h80v160h160v80H120Zm480 0v-80h160v-160h80v240H600ZM287-327l-57-56 57-57H80v-80h207l-57-57 57-56 153 153-153 153Zm386 0L520-480l153-153 57 56-57 57h207v80H673l57 57-57 56ZM120-600v-240h240v80H200v160h-80Zm640 0v-160H600v-80h240v240h-80Z"/></symbol>
+  <symbol id="i-check" viewBox="0 -960 960 960"><path d="M382-240 154-468l57-57 171 171 367-367 57 57-424 424Z"/></symbol>
+  <symbol id="i-circle" viewBox="0 -960 960 960"><path d="M480-80q-83 0-156-31.5T197-197q-54-54-85.5-127T80-480q0-83 31.5-156T197-763q54-54 127-85.5T480-880q83 0 156 31.5T763-763q54 54 85.5 127T880-480q0 83-31.5 156T763-197q-54 54-127 85.5T480-80Zm0-80q134 0 227-93t93-227q0-134-93-227t-227-93q-134 0-227 93t-93 227q0 134 93 227t227 93Zm0-320Z"/></symbol>
+  <symbol id="i-close" viewBox="0 -960 960 960"><path d="m256-200-56-56 224-224-224-224 56-56 224 224 224-224 56 56-224 224 224 224-56 56-224-224-224 224Z"/></symbol>
+  <symbol id="i-data_object" viewBox="0 -960 960 960"><path d="M560-160v-80h120q17 0 28.5-11.5T720-280v-80q0-38 22-69t58-44v-14q-36-13-58-44t-22-69v-80q0-17-11.5-28.5T680-720H560v-80h120q50 0 85 35t35 85v80q0 17 11.5 28.5T840-560h40v160h-40q-17 0-28.5 11.5T800-360v80q0 50-35 85t-85 35H560Zm-280 0q-50 0-85-35t-35-85v-80q0-17-11.5-28.5T120-400H80v-160h40q17 0 28.5-11.5T160-600v-80q0-50 35-85t85-35h120v80H280q-17 0-28.5 11.5T240-680v80q0 38-22 69t-58 44v14q36 13 58 44t22 69v80q0 17 11.5 28.5T280-240h120v80H280Z"/></symbol>
+  <symbol id="i-download" viewBox="0 -960 960 960"><path d="M480-320 280-520l56-58 104 104v-326h80v326l104-104 56 58-200 200ZM240-160q-33 0-56.5-23.5T160-240v-120h80v120h480v-120h80v120q0 33-23.5 56.5T720-160H240Z"/></symbol>
+  <symbol id="i-edit" viewBox="0 -960 960 960"><path d="M200-200h57l391-391-57-57-391 391v57Zm-80 80v-170l528-527q12-11 26.5-17t30.5-6q16 0 31 6t26 18l55 56q12 11 17.5 26t5.5 30q0 16-5.5 30.5T817-647L290-120H120Zm640-584-56-56 56 56Zm-141 85-28-29 57 57-29-28Z"/></symbol>
+  <symbol id="i-file_json" viewBox="0 -960 960 960"><path d="M190-360h70q17 0 28.5-11.5T300-400v-200h-60v190h-40v-50h-50v60q0 17 11.5 28.5T190-360Zm177 0h60q17 0 28.5-11.5T467-400v-60q0-17-11.5-28.5T427-500h-50v-50h40v20h50v-30q0-17-11.5-28.5T427-600h-60q-17 0-28.5 11.5T327-560v60q0 17 11.5 28.5T367-460h50v50h-40v-20h-50v30q0 17 11.5 28.5T367-360Zm176-60v-120h40v120h-40Zm-10 60h60q17 0 28.5-11.5T633-400v-160q0-17-11.5-28.5T593-600h-60q-17 0-28.5 11.5T493-560v160q0 17 11.5 28.5T533-360Zm127 0h50v-105l40 105h50v-240h-50v105l-40-105h-50v240ZM120-160q-33 0-56.5-23.5T40-240v-480q0-33 23.5-56.5T120-800h720q33 0 56.5 23.5T920-720v480q0 33-23.5 56.5T840-160H120Zm0-80h720v-480H120v480Zm0 0v-480 480Z"/></symbol>
+  <symbol id="i-file_png" viewBox="0 -960 960 960"><path d="M260-500v-40h40v40h-40Zm400 140h40q25 0 42.5-17.5T760-420v-60h-60v60h-40v-120h100q0-25-17.5-42.5T700-600h-40q-25 0-42.5 17.5T600-540v120q0 25 17.5 42.5T660-360Zm-460 0h60v-80h60q17 0 28.5-11.5T360-480v-80q0-17-11.5-28.5T320-600H200v240Zm200 0h60v-96l40 96h60v-240h-60v94l-40-94h-60v240ZM160-160q-33 0-56.5-23.5T80-240v-480q0-33 23.5-56.5T160-800h640q33 0 56.5 23.5T880-720v480q0 33-23.5 56.5T800-160H160Zm0-80h640v-480H160v480Zm0 0v-480 480Zm0 0v-480 480Z"/></symbol>
+  <symbol id="i-file_save" viewBox="0 -960 960 960"><path d="m720-120 160-160-56-56-64 64v-167h-80v167l-64-64-56 56 160 160ZM560 0v-80h320V0H560ZM240-160q-33 0-56.5-23.5T160-240v-560q0-33 23.5-56.5T240-880h280l240 240v121h-80v-81H480v-200H240v560h240v80H240Zm0-80v-560 560Z"/></symbol>
+  <symbol id="i-fit_screen" viewBox="0 -960 960 960"><path d="M800-600v-120H680v-80h120q33 0 56.5 23.5T880-720v120h-80Zm-720 0v-120q0-33 23.5-56.5T160-800h120v80H160v120H80Zm600 440v-80h120v-120h80v120q0 33-23.5 56.5T800-160H680Zm-520 0q-33 0-56.5-23.5T80-240v-120h80v120h120v80H160Zm80-160v-320h480v320H240Zm80-80h320v-160H320v160Zm0 0v-160 160Z"/></symbol>
+  <symbol id="i-flip_to_back" viewBox="0 -960 960 960"><path d="M200-120q-33 0-56.5-23.5T120-200v-480h80v480h480v80H200Zm160-240v80q-33 0-56.5-23.5T280-360h80Zm-80-80v-80h80v80h-80Zm0-160v-80h80v80h-80Zm80-160h-80q0-33 23.5-56.5T360-840v80Zm80 480v-80h80v80h-80Zm0-480v-80h80v80h-80Zm160 0v-80h80v80h-80Zm0 480v-80h80v80h-80Zm160-480v-80q33 0 56.5 23.5T840-760h-80Zm0 400h80q0 33-23.5 56.5T760-280v-80Zm0-80v-80h80v80h-80Zm0-160v-80h80v80h-80Z"/></symbol>
+  <symbol id="i-flip_to_front" viewBox="0 -960 960 960"><path d="M360-280q-33 0-56.5-23.5T280-360v-400q0-33 23.5-56.5T360-840h400q33 0 56.5 23.5T840-760v400q0 33-23.5 56.5T760-280H360Zm0-80h400v-400H360v400ZM200-200v80q-33 0-56.5-23.5T120-200h80Zm-80-80v-80h80v80h-80Zm0-160v-80h80v80h-80Zm0-160v-80h80v80h-80Zm160 480v-80h80v80h-80Zm160 0v-80h80v80h-80Zm160 0v-80h80v80h-80Z"/></symbol>
+  <symbol id="i-html" viewBox="0 -960 960 960"><path d="M0-360v-240h60v80h80v-80h60v240h-60v-100H60v100H0Zm310 0v-180h-70v-60h200v60h-70v180h-60Zm170 0v-200q0-17 11.5-28.5T520-600h180q17 0 28.5 11.5T740-560v200h-60v-180h-40v140h-60v-140h-40v180h-60Zm320 0v-240h60v180h100v60H800Z"/></symbol>
+  <symbol id="i-image" viewBox="0 -960 960 960"><path d="M200-120q-33 0-56.5-23.5T120-200v-560q0-33 23.5-56.5T200-840h560q33 0 56.5 23.5T840-760v560q0 33-23.5 56.5T760-120H200Zm0-80h560v-560H200v560Zm40-80h480L570-480 450-320l-90-120-120 160Zm-40 80v-560 560Z"/></symbol>
+  <symbol id="i-ink_eraser" viewBox="0 -960 960 960"><path d="M690-240h190v80H610l80-80Zm-500 80-85-85q-23-23-23.5-57t22.5-58l440-456q23-24 56.5-24t56.5 23l199 199q23 23 23 57t-23 57L520-160H190Zm296-80 314-322-198-198-442 456 64 64h262Zm-6-240Z"/></symbol>
+  <symbol id="i-ink_pen" viewBox="0 -960 960 960"><path d="m490-527 37 37 217-217-37-37-217 217ZM200-200h37l233-233-37-37-233 233v37Zm355-205L405-555l167-167-29-29-219 219-56-56 218-219q24-24 56.5-24t56.5 24l29 29 50-50q12-12 28.5-12t28.5 12l93 93q12 12 12 28.5T828-678L555-405ZM270-120H120v-150l285-285 150 150-285 285Z"/></symbol>
+  <symbol id="i-keyboard_arrow_down" viewBox="0 -960 960 960"><path d="M480-344 240-584l56-56 184 184 184-184 56 56-240 240Z"/></symbol>
+  <symbol id="i-more_horiz" viewBox="0 -960 960 960"><path d="M240-400q-33 0-56.5-23.5T160-480q0-33 23.5-56.5T240-560q33 0 56.5 23.5T320-480q0 33-23.5 56.5T240-400Zm240 0q-33 0-56.5-23.5T400-480q0-33 23.5-56.5T480-560q33 0 56.5 23.5T560-480q0 33-23.5 56.5T480-400Zm240 0q-33 0-56.5-23.5T640-480q0-33 23.5-56.5T720-560q33 0 56.5 23.5T800-480q0 33-23.5 56.5T720-400Z"/></symbol>
+  <symbol id="i-opacity" viewBox="0 -960 960 960"><path d="M480-120q-133 0-226.5-92T160-436q0-65 25-121.5T254-658l226-222 226 222q44 44 69 100.5T800-436q0 132-93.5 224T480-120ZM242-400h474q12-72-13.5-123T650-600L480-768 310-600q-27 26-53 77t-15 123Z"/></symbol>
+  <symbol id="i-pan_tool" viewBox="0 -960 960 960"><path d="M402-40q-30 0-56-13.5T303-92L48-465l24-23q19-19 45-22t47 12l116 81v-383q0-17 11.5-28.5T320-840q17 0 28.5 11.5T360-800v537L212-367l157 229q5 8 14 13t19 5h278q33 0 56.5-23.5T760-200v-560q0-17 11.5-28.5T800-800q17 0 28.5 11.5T840-760v560q0 66-47 113T680-40H402Zm38-440v-400q0-17 11.5-28.5T480-920q17 0 28.5 11.5T520-880v400h-80Zm160 0v-360q0-17 11.5-28.5T640-880q17 0 28.5 11.5T680-840v360h-80ZM486-300Z"/></symbol>
+  <symbol id="i-pen_size_3" viewBox="0 -960 960 960"><path d="M218-218q-17-17-17-42t17-42l440-440q17-18 42-17.5t42 17.5q17 17 17.5 42T742-658L302-218q-17 17-42 17.5T218-218Z"/></symbol>
+  <symbol id="i-pen_size_4" viewBox="0 -960 960 960"><path d="M229-229q-29-29-29-71t29-71l360-360q29-29 71-29t71 29q29 29 29 71t-29 71L371-229q-29 29-71 29t-71-29Z"/></symbol>
+  <symbol id="i-pen_size_5" viewBox="0 -960 960 960"><path d="M235-235q-35-35-35-85t35-85l320-320q35-35 85-35t85 35q35 35 35 85t-35 85L405-235q-35 35-85 35t-85-35Z"/></symbol>
+  <symbol id="i-redo" viewBox="0 -960 960 960"><path d="M396-200q-97 0-166.5-63T160-420q0-94 69.5-157T396-640h252L544-744l56-56 200 200-200 200-56-56 104-104H396q-63 0-109.5 40T240-420q0 60 46.5 100T396-280h284v80H396Z"/></symbol>
+  <symbol id="i-search" viewBox="0 -960 960 960"><path d="M784-120 532-372q-30 24-69 38t-83 14q-109 0-184.5-75.5T120-580q0-109 75.5-184.5T380-840q109 0 184.5 75.5T640-580q0 44-14 83t-38 69l252 252-56 56ZM380-400q75 0 127.5-52.5T560-580q0-75-52.5-127.5T380-760q-75 0-127.5 52.5T200-580q0 75 52.5 127.5T380-400Z"/></symbol>
+  <symbol id="i-square" viewBox="0 -960 960 960"><path d="M120-120v-720h720v720H120Zm80-80h560v-560H200v560Zm0 0v-560 560Z"/></symbol>
+  <symbol id="i-title" viewBox="0 -960 960 960"><path d="M420-160v-520H200v-120h560v120H540v520H420Z"/></symbol>
+  <symbol id="i-undo" viewBox="0 -960 960 960"><path d="M280-200v-80h284q63 0 109.5-40T720-420q0-60-46.5-100T564-560H312l104 104-56 56-200-200 200-200 56 56-104 104h252q97 0 166.5 63T800-420q0 94-69.5 157T564-200H280Z"/></symbol>
+</svg>
+
 <canvas id="board"></canvas>
 
 <div id="toolbar">
   <!-- Making things. Put away while something is selected, since the toolbar is
        then about the thing you picked rather than about making another one. -->
   <span class="group" id="tool-group">
-    <button data-tool="select" data-tip="Select · V" aria-label="Select"><span class="icon">arrow_selector_tool</span></button>
-    <button data-tool="draw" aria-pressed="true" data-tip="Draw · D" aria-label="Draw"><span class="icon">ink_pen</span></button>
-    <button data-tool="rect" data-tip="Rectangle · R" aria-label="Rectangle"><span class="icon">square</span></button>
-    <button data-tool="oval" data-tip="Oval · O" aria-label="Oval"><span class="icon">circle</span></button>
-    <button data-tool="text" data-tip="Text · T" aria-label="Text"><span class="icon">title</span></button>
-    <button data-tool="erase" data-tip="Erase · E" aria-label="Erase"><span class="icon">ink_eraser</span></button>
-    <button data-tool="pan" data-tip="Hand · H or hold space" aria-label="Hand"><span class="icon">pan_tool</span></button>
-    <button id="add-image" data-tip="Add image · U or paste image" aria-label="Add image"><span class="icon">image</span></button>
+    <button data-tool="select" data-tip="Select · V" aria-label="Select"><svg class="icon" aria-hidden="true"><use href="#i-arrow_selector_tool"></use></svg></button>
+    <button data-tool="draw" aria-pressed="true" data-tip="Draw · D" aria-label="Draw"><svg class="icon" aria-hidden="true"><use href="#i-ink_pen"></use></svg></button>
+    <button data-tool="rect" data-tip="Rectangle · R" aria-label="Rectangle"><svg class="icon" aria-hidden="true"><use href="#i-square"></use></svg></button>
+    <button data-tool="oval" data-tip="Oval · O" aria-label="Oval"><svg class="icon" aria-hidden="true"><use href="#i-circle"></use></svg></button>
+    <button data-tool="text" data-tip="Text · T" aria-label="Text"><svg class="icon" aria-hidden="true"><use href="#i-title"></use></svg></button>
+    <button data-tool="erase" data-tip="Erase · E" aria-label="Erase"><svg class="icon" aria-hidden="true"><use href="#i-ink_eraser"></use></svg></button>
+    <button data-tool="pan" data-tip="Hand · H or hold space" aria-label="Hand"><svg class="icon" aria-hidden="true"><use href="#i-pan_tool"></use></svg></button>
+    <button id="add-image" data-tip="Add image · U or paste image" aria-label="Add image"><svg class="icon" aria-hidden="true"><use href="#i-image"></use></svg></button>
     <span class="divider"></span>
   </span>
 
-  <button data-width="1" data-tip="Thin · W to cycle" aria-label="Thin"><span class="icon">pen_size_3</span></button>
-  <button data-width="3" aria-pressed="true" data-tip="Medium · W to cycle" aria-label="Medium"><span class="icon">pen_size_4</span></button>
-  <button data-width="8" data-tip="Thick · W to cycle" aria-label="Thick"><span class="icon">pen_size_5</span></button>
+  <button data-width="1" data-tip="Thin · W to cycle" aria-label="Thin"><svg class="icon" aria-hidden="true"><use href="#i-pen_size_3"></use></svg></button>
+  <button data-width="3" aria-pressed="true" data-tip="Medium · W to cycle" aria-label="Medium"><svg class="icon" aria-hidden="true"><use href="#i-pen_size_4"></use></svg></button>
+  <button data-width="8" data-tip="Thick · W to cycle" aria-label="Thick"><svg class="icon" aria-hidden="true"><use href="#i-pen_size_5"></use></svg></button>
   <button id="fill" aria-pressed="false" data-tip="Fill · F">Fill</button>
-  <button id="opacity" data-tip="Opacity · G to cycle"><span class="icon">opacity</span><span id="opacity-value">100%</span></button>
+  <button id="opacity" data-tip="Opacity · G to cycle"><svg class="icon" aria-hidden="true"><use href="#i-opacity"></use></svg><span id="opacity-value">100%</span></button>
 
   <span class="divider"></span>
 
@@ -309,48 +350,48 @@
        grouping need two things to act on each other. -->
   <span class="group" id="order-tools" hidden>
     <span class="divider"></span>
-    <button data-order="1" data-tip="Bring to front · ]" aria-label="Bring to front"><span class="icon">flip_to_front</span></button>
-    <button data-order="-1" data-tip="Send to back · [" aria-label="Send to back"><span class="icon">flip_to_back</span></button>
+    <button data-order="1" data-tip="Bring to front · ]" aria-label="Bring to front"><svg class="icon" aria-hidden="true"><use href="#i-flip_to_front"></use></svg></button>
+    <button data-order="-1" data-tip="Send to back · [" aria-label="Send to back"><svg class="icon" aria-hidden="true"><use href="#i-flip_to_back"></use></svg></button>
   </span>
 
   <span class="group" id="align-tools" hidden>
     <span class="divider"></span>
-    <button data-align="-1,0" data-tip="Align left · ⌥A" aria-label="Align left"><span class="icon">align_horizontal_left</span></button>
-    <button data-center="x" data-tip="Center horizontally · ⌥H" aria-label="Center horizontally"><span class="icon">align_horizontal_center</span></button>
-    <button data-align="1,0" data-tip="Align right · ⌥D" aria-label="Align right"><span class="icon">align_horizontal_right</span></button>
-    <button data-align="0,-1" data-tip="Align top · ⌥W" aria-label="Align top"><span class="icon">align_vertical_top</span></button>
-    <button data-center="y" data-tip="Center vertically · ⌥V" aria-label="Center vertically"><span class="icon">align_vertical_center</span></button>
-    <button data-align="0,1" data-tip="Align bottom · ⌥S" aria-label="Align bottom"><span class="icon">align_vertical_bottom</span></button>
+    <button data-align="-1,0" data-tip="Align left · ⌥A" aria-label="Align left"><svg class="icon" aria-hidden="true"><use href="#i-align_horizontal_left"></use></svg></button>
+    <button data-center="x" data-tip="Center horizontally · ⌥H" aria-label="Center horizontally"><svg class="icon" aria-hidden="true"><use href="#i-align_horizontal_center"></use></svg></button>
+    <button data-align="1,0" data-tip="Align right · ⌥D" aria-label="Align right"><svg class="icon" aria-hidden="true"><use href="#i-align_horizontal_right"></use></svg></button>
+    <button data-align="0,-1" data-tip="Align top · ⌥W" aria-label="Align top"><svg class="icon" aria-hidden="true"><use href="#i-align_vertical_top"></use></svg></button>
+    <button data-center="y" data-tip="Center vertically · ⌥V" aria-label="Center vertically"><svg class="icon" aria-hidden="true"><use href="#i-align_vertical_center"></use></svg></button>
+    <button data-align="0,1" data-tip="Align bottom · ⌥S" aria-label="Align bottom"><svg class="icon" aria-hidden="true"><use href="#i-align_vertical_bottom"></use></svg></button>
   </span>
 
   <!-- Grouping needs two things to join, but ungrouping needs only the one group,
        so this cannot ride along with the alignment buttons. -->
   <span class="group" id="group-tools" hidden>
     <span class="divider"></span>
-    <button id="group" aria-pressed="false" data-tip="Group · ⌘G" aria-label="Group"><span class="icon">cell_merge</span></button>
+    <button id="group" aria-pressed="false" data-tip="Group · ⌘G" aria-label="Group"><svg class="icon" aria-hidden="true"><use href="#i-cell_merge"></use></svg></button>
   </span>
 
   <span class="group" id="history-group">
     <span class="divider"></span>
-    <button id="undo" data-tip="Undo · ⌘Z" aria-label="Undo"><span class="icon">undo</span></button>
-    <button id="redo" data-tip="Redo · ⇧⌘Z" aria-label="Redo"><span class="icon">redo</span></button>
+    <button id="undo" data-tip="Undo · ⌘Z" aria-label="Undo"><svg class="icon" aria-hidden="true"><use href="#i-undo"></use></svg></button>
+    <button id="redo" data-tip="Redo · ⇧⌘Z" aria-label="Redo"><svg class="icon" aria-hidden="true"><use href="#i-redo"></use></svg></button>
   </span>
 
   <span class="group" id="view-group">
     <span class="divider"></span>
-    <button id="fit" data-tip="Fit to content" aria-label="Fit to content"><span class="icon">fit_screen</span></button>
-    <button id="download" aria-expanded="false" data-tip="Download" aria-label="Download"><span class="icon">download</span></button>
+    <button id="fit" data-tip="Fit to content" aria-label="Fit to content"><svg class="icon" aria-hidden="true"><use href="#i-fit_screen"></use></svg></button>
+    <button id="download" aria-expanded="false" data-tip="Download" aria-label="Download"><svg class="icon" aria-hidden="true"><use href="#i-download"></use></svg></button>
   </span>
 
   <span class="divider"></span>
 
   <span class="group" id="scene-group">
-    <button id="show-scene" aria-pressed="false" data-tip="Scene data" aria-label="Scene data"><span class="icon">data_object</span></button>
+    <button id="show-scene" aria-pressed="false" data-tip="Scene data" aria-label="Scene data"><svg class="icon" aria-hidden="true"><use href="#i-data_object"></use></svg></button>
   </span>
-  <button id="hide" data-tip="Hide toolbar · ⌘." aria-label="Hide toolbar"><span class="icon">keyboard_arrow_down</span></button>
+  <button id="hide" data-tip="Hide toolbar · ⌘." aria-label="Hide toolbar"><svg class="icon" aria-hidden="true"><use href="#i-keyboard_arrow_down"></use></svg></button>
 </div>
 
-<button id="peek" data-tip="Show toolbar · ⌘." aria-label="Show toolbar"><span class="icon">more_horiz</span></button>
+<button id="peek" data-tip="Show toolbar · ⌘." aria-label="Show toolbar"><svg class="icon" aria-hidden="true"><use href="#i-more_horiz"></use></svg></button>
 
 <!-- Which document you are in, top left, and the way to any other one. The panel
      opens over the button, so the name you clicked is where the list appears. -->
@@ -364,7 +405,7 @@
 <!-- Search, top right. The button goes away with the toolbar; ⌘space and ⌘K open
      the panel either way, since a shortcut is the only way in once the chrome is
      hidden and a shortcut nobody can reach is no way in at all. -->
-<button id="search-button" class="top-chrome" title="Search · ⌘K" aria-label="Search"><span class="icon">search</span></button>
+<button id="search-button" class="top-chrome" title="Search · ⌘K" aria-label="Search"><svg class="icon" aria-hidden="true"><use href="#i-search"></use></svg></button>
 
 <div id="search-panel" hidden>
   <input id="search-field" class="field" type="text" placeholder="Search every document" aria-label="Search every document" spellcheck="false">
@@ -374,9 +415,10 @@
 <div id="tip"></div>
 
 <div id="download-menu" hidden>
-  <button id="png"><span class="icon">file_png</span> PNG</button>
-  <button id="json"><span class="icon">file_json</span> JSON</button>
-  <button id="svg"><span class="icon">file_save</span> SVG</button>
+  <button id="png"><svg class="icon" aria-hidden="true"><use href="#i-file_png"></use></svg> PNG</button>
+  <button id="json"><svg class="icon" aria-hidden="true"><use href="#i-file_json"></use></svg> JSON</button>
+  <button id="svg"><svg class="icon" aria-hidden="true"><use href="#i-file_save"></use></svg> SVG</button>
+  <button id="html"><svg class="icon" aria-hidden="true"><use href="#i-html"></use></svg> HTML page</button>
 </div>
 
 <aside id="scene-panel" hidden>
@@ -1292,6 +1334,27 @@ createMiniCanvas.plugin('item-shapes', [], function (core) {
       return Math.hypot((local.x - shape.x - rx) / rx, (local.y - shape.y - ry) / ry) <= 1 + reach / Math.min(rx, ry);
     },
     scale(shape, scaleX, scaleY) { shape.w *= scaleX; shape.h *= scaleY; },
+
+    // A filled shape is solid throughout its box, so any overlap with the marquee
+    // is a touch, same as a click. An unfilled one is a ring: reaching into its
+    // hollow middle without ever crossing the line is not a touch, so a marquee
+    // that never leaves that middle should not catch it — the bug this exists to
+    // fix, where a small selection floating inside a big empty rectangle dragged
+    // the rectangle in with it. The marquee still catches an outline shape it
+    // wraps entirely, since wrapping the whole ring is not staying in the hole.
+    within(shape, inside, marquee) {
+      const box = core.boundsOf([shape]);
+      if (!box) return false;
+      const touches = box.x <= marquee.x + marquee.w && box.x + box.w >= marquee.x
+                    && box.y <= marquee.y + marquee.h && box.y + box.h >= marquee.y;
+      if (!touches || shape.fill) return touches;
+      const pad = core.inkPad(shape);
+      const holeRight = box.x + box.w - pad, holeBottom = box.y + box.h - pad;
+      const inHole = marquee.x >= box.x + pad && marquee.x + marquee.w <= holeRight
+                   && marquee.y >= box.y + pad && marquee.y + marquee.h <= holeBottom;
+      return !inHole;
+    },
+
     svg(shape, escape) {
       // Same rule as the canvas: a filled shape carries no stroke at all.
       const paint = shape.fill
@@ -1534,6 +1597,7 @@ createMiniCanvas.plugin('tool-text', ['item-text'], function (core) {
   let caretAnchor = 0;       // the other end of the selected run
   let textOrigin = null;     // the click a new text item stays centred on
   let lastTap = null;        // for spotting a double click
+  let selecting = false;     // a press is dragging a run out across the glyphs
   let caretTimer = null;     // only runs while text is being typed
   let caretOn = true;
 
@@ -1597,6 +1661,7 @@ createMiniCanvas.plugin('tool-text', ['item-text'], function (core) {
     const item = editing;
     editing = null;
     textOrigin = null;
+    selecting = false;
     stopCaretBlink();
     if (!item.text) {
       const index = core.scene.items.indexOf(item);
@@ -1616,6 +1681,11 @@ createMiniCanvas.plugin('tool-text', ['item-text'], function (core) {
     caretAnchor = 0;
     caret = (item.text || '').length;
     textOrigin = null;   // an existing item keeps its position and grows rightward
+    selecting = false;
+    // The double click that opened the editor is spent. Without this the next
+    // press would read as the second half of it and take a word when it meant to
+    // put the caret down.
+    lastTap = null;
     startCaretBlink();
     core.requestRedraw();
   }
@@ -1652,6 +1722,31 @@ createMiniCanvas.plugin('tool-text', ['item-text'], function (core) {
     return core.caretIndex(item, row, best);
   }
 
+  // What a double click takes. A run of letters and digits if the caret is inside
+  // or against one, and otherwise a run of whatever else is there, so a double
+  // click on the space between two words takes the space rather than nothing.
+  // A line break belongs to neither and stops both.
+  const WORD = /[\p{L}\p{N}_]/u;
+  function kindOf(text, index) {
+    const character = text[index];
+    if (character === undefined || character === '\n') return null;
+    if (WORD.test(character)) return 'word';
+    return character === ' ' || character === '\t' ? 'space' : 'mark';
+  }
+
+  function wordAt(text, at) {
+    const kind = kindOf(text, at) === 'word' ? 'word'
+      : kindOf(text, at - 1) === 'word' ? 'word' : kindOf(text, at);
+    if (!kind) return { from: at, to: at };   // pressed at the end of a line
+    let from = at, to = at;
+    while (kindOf(text, from - 1) === kind) from -= 1;
+    while (kindOf(text, to) === kind) to += 1;
+    return { from: from, to: to };
+  }
+
+  const pressingText = (world) =>
+    core.scene.items[core.itemIndexAt(world, core.GRAB_SLOP / core.scene.view.scale)] === editing;
+
   function isSecondTap(item, screenPoint) {
     const now = Date.now();
     const again = lastTap && lastTap.item === item && now - lastTap.time < 400
@@ -1669,13 +1764,53 @@ createMiniCanvas.plugin('tool-text', ['item-text'], function (core) {
   });
 
   // A click inside the text you are typing puts the caret there instead of
-  // finishing, so the select-everything opening is easy to step back from.
+  // finishing, so the select-everything opening is easy to step back from. A
+  // second click takes the word under it, and holding on from either drags a run
+  // out across the glyphs — a text field, in other words, since that is what this
+  // is while the editor is open.
   core.on('pointerdown', (event, at) => {
     if (!editing || core.spaceHeld || core.tool === 'pan') return false;
-    if (core.scene.items[core.itemIndexAt(at.world, core.GRAB_SLOP / core.scene.view.scale)] !== editing) return false;
-    caret = caretAnchor = caretIndexAt(editing, at.world);
+    if (!pressingText(at.world)) return false;
+    const index = caretIndexAt(editing, at.world);
+    if (isSecondTap(editing, at.screenPoint)) {
+      const word = wordAt(editing.text || '', index);
+      caretAnchor = word.from;
+      caret = word.to;
+      selecting = false;              // the word is the whole gesture
+    } else {
+      caret = caretAnchor = index;
+      selecting = true;               // from here to wherever the press lets go
+    }
     startCaretBlink();
     core.requestRedraw();
+    return true;
+  }, 10);
+
+  // Dragging moves the far end of the run and leaves the anchor where it was
+  // pressed, so a drag back past the start selects the other way round.
+  core.on('pointermove', (event, at) => {
+    if (!selecting || !editing) return false;
+    const index = caretIndexAt(editing, at.world);
+    if (index === caret) return true;
+    caret = index;
+    caretOn = true;                   // solid while a run is being drawn out
+    core.requestRedraw();
+    return true;
+  }, 10);
+
+  core.on('pointerup', () => {
+    if (!selecting) return false;
+    selecting = false;
+    startCaretBlink();
+    return false;                     // a release is news everyone else can have
+  }, 10);
+
+  // The pointer over the text being edited is a text cursor, which is the only
+  // hint that dragging across it selects rather than moves it.
+  core.on('hover', (event, at) => {
+    if (!editing || !at || core.spaceHeld || core.tool === 'pan') return false;
+    if (!pressingText(at.world)) return false;
+    core.canvas.style.cursor = 'text';
     return true;
   }, 10);
 
@@ -1895,8 +2030,8 @@ createMiniCanvas.plugin('select', [], function (core) {
   };
 
   // The body of a selected item, which is a move even where the item itself has
-  // nothing to hit: an unfilled shape answers only to its outline, and the frame
-  // edge has taken that over for resizing.
+  // nothing to hit: an unfilled shape answers only to its outline, and inside it
+  // there is nothing else to mean.
   const insideSelected = (world) => {
     for (const item of selection) {
       const box = core.itemBox(item);
@@ -1926,7 +2061,9 @@ createMiniCanvas.plugin('select', [], function (core) {
     w: Math.abs(box.x2 - box.x1), h: Math.abs(box.y2 - box.y1)
   });
 
-  // Everything the dragged rectangle touches.
+  // Everything the dragged rectangle touches. `box` goes to `within` too, not
+  // just the point predicate: a shape with a hollow middle needs to reason about
+  // where the marquee's edges are, not just which points it covers.
   function selectWithin(marqueeBox) {
     const box = normalised(marqueeBox);
     const right = box.x + box.w, bottom = box.y + box.h;
@@ -1934,7 +2071,7 @@ createMiniCanvas.plugin('select', [], function (core) {
     for (const item of core.scene.items) {
       const type = core.types[item.type];
       if (type && type.within) {
-        if (type.within(item, inside)) selection.add(item);
+        if (type.within(item, inside, box)) selection.add(item);
         continue;
       }
       const itemBox = core.boundsOf([item]);
@@ -2168,6 +2305,13 @@ createMiniCanvas.plugin('transform', ['select'], function (core) {
     ];
   }
 
+  // How far inside the frame an edge still answers, in screen pixels. Small on
+  // purpose: an edge is grabbed by aiming at the line or just outside it, and the
+  // room inside belongs to what the frame is drawn around. A band reaching inwards
+  // as far as it reaches out means a press near the top of a shape resizes it when
+  // it plainly meant to pick it up.
+  const EDGE_INSIDE = 3;
+
   // The edges, each dragging against the opposite one and leaving the other axis
   // alone. An edge is grabbed anywhere along its length and draws nothing of its
   // own: the frame is already a line in exactly the right place, and four more
@@ -2197,15 +2341,22 @@ createMiniCanvas.plugin('transform', ['select'], function (core) {
   // hovering, so the two can never promise different things.
   function handleAt(local, frame) {
     const reach = core.HANDLE_SIZE / core.scene.view.scale;
+    const inward = EDGE_INSIDE / core.scene.view.scale;
     const corner = handleCorners(frame.box, frame.content).find(
       (point) => Math.abs(point.x - local.x) < reach && Math.abs(point.y - local.y) < reach);
     if (corner) return corner;
     // Corners answer first, so the ends of an edge belong to the corner sitting
     // there and the edge speaks only for the length between them.
+    //
+    // An edge reaches outwards, and barely inwards at all. `push` is the way out
+    // of the frame on that axis, so the sign of the offset says which side of the
+    // line the pointer is on: outside is a resize, inside is the thing itself, to
+    // be picked up or moved.
     return handleEdges(frame.box, frame.content).find((edge) => {
       const across = edge.axis === 'x' ? local.x : local.y;
       const along = edge.axis === 'x' ? local.y : local.x;
-      return Math.abs(across - edge.at) < reach
+      const out = (across - edge.at) * (edge.axis === 'x' ? edge.push.x : edge.push.y);
+      return out < reach && out > -inward
           && along > edge.from - reach && along < edge.to + reach;
     }) || null;
   }
@@ -2854,6 +3005,11 @@ createMiniCanvas.plugin('export', [], function (core) {
   const write = (key, value) => { try { if (store) store.setItem(key, value); } catch (error) { /* full, or refused */ } };
   const docText = (id) => read(docKey(id));
 
+  // Whether this browser has ever had a document here, read before the migration
+  // below takes the old key away. An exported page arriving somewhere brand new
+  // has no use for the empty document a first run would otherwise invent.
+  const startedEmpty = !read(DOCS_KEY) && !read(OLD_KEY);
+
   // `name` is null until someone types one, and an unnamed document is called after
   // its own first line of text. A list of six things called Untitled is not a list.
   const docs = (() => {
@@ -2868,6 +3024,20 @@ createMiniCanvas.plugin('export', [], function (core) {
     return { current: id, list: [{ id: id, name: null }] };
   })();
 
+  // A page exported with a document baked into it carries that document's id. A
+  // copy landing on a machine that already has documents of its own adds one
+  // rather than replacing them or being ignored, and opening the same file twice
+  // adopts it once: the second time the id is already known and whatever has been
+  // drawn on it since is what opens.
+  const sceneBlock = document.getElementById('scene');
+  const shared = sceneBlock.getAttribute('data-document');
+  if (shared && !docs.list.some((doc) => doc.id === shared)) {
+    if (startedEmpty) docs.list.length = 0;   // nothing was in it and nothing put it there
+    docs.list.push({ id: shared, name: sceneBlock.getAttribute('data-name') || null, used: Date.now() });
+    write(docKey(shared), sceneBlock.textContent.trim());
+    docs.current = shared;
+  }
+
   let currentId = docs.list.some((doc) => doc.id === docs.current) ? docs.current : docs.list[0].id;
   const saveDocs = () => write(DOCS_KEY, JSON.stringify(docs));
   // The list is ordered by when you were last in a document, so the one you want
@@ -2879,7 +3049,8 @@ createMiniCanvas.plugin('export', [], function (core) {
   saveDocs();   // a first run, or a migration, is written down before anything is drawn
 
   const board = MiniCanvas.mount('#board', {
-    scene: docText(currentId) || '#scene'   // every feature on the page is loaded by default
+    scene: docText(currentId) || '#scene',   // every feature on the page is loaded by default
+    tool: 'draw'                             // which is what the toolbar starts out saying
   });
 
   const sceneText = document.getElementById('scene-text');
@@ -2995,6 +3166,53 @@ createMiniCanvas.plugin('export', [], function (core) {
 
   document.getElementById('json').onclick = () =>
     download(new Blob([board.toText()], { type: 'application/json' }), 'canvas.json');
+
+  // The whole page, with this document baked into it. Not a scene and not a
+  // picture: one file that opens in any browser with no server, no storage and
+  // nothing to send alongside it. The scene block was always the thing that let
+  // the data outlive the script; this writes one on purpose.
+  const slug = (text) =>
+    text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'canvas';
+
+  function pageWithScene() {
+    const page = document.documentElement.cloneNode(true);
+    const at = (selector) => page.querySelector(selector);
+    // Whatever the chrome happened to be doing when the button was pressed is not
+    // part of the document, so it all goes back the way the source file has it.
+    ['#doc-panel', '#search-panel', '#scene-panel', '#download-menu']
+      .forEach((selector) => at(selector).setAttribute('hidden', ''));
+    at('#doc-list').textContent = '';
+    at('#search-list').textContent = '';
+    at('#doc-button').removeAttribute('hidden');
+    at('#doc-button').setAttribute('aria-expanded', 'false');
+    at('#download').setAttribute('aria-expanded', 'false');
+    at('#show-scene').setAttribute('aria-pressed', 'false');
+    at('#toolbar').classList.remove('away');
+    at('#peek').classList.remove('here');
+    at('#doc-button').classList.remove('away');
+    at('#search-button').classList.remove('away');
+    at('#tip').classList.remove('here');
+    // The tooltip and the menu are placed by hand, and their coordinates belong to
+    // a window that is not the one this file will open in.
+    at('#tip').removeAttribute('style');
+    at('#download-menu').removeAttribute('style');
+
+
+    const name = titleOf(docById(currentId));
+    at('title').textContent = name;
+    const block = at('#scene');
+    // A note that spells out a closing script tag would end the block early, and
+    // this comment may not spell one out either. JSON reads <\/ as a plain slash,
+    // so escaping every </ costs whoever opens the file nothing.
+    block.textContent = '\n  ' + board.toText().replace(/<\//g, '<\\/') + '\n';
+    block.setAttribute('data-document', currentId);
+    block.setAttribute('data-name', name);
+    return '<!doctype html>\n' + page.outerHTML + '\n';
+  }
+
+  document.getElementById('html').onclick = () =>
+    download(new Blob([pageWithScene()], { type: 'text/html' }),
+      slug(titleOf(docById(currentId))) + '.html');
 
   // The toolbar follows the selection: making things while something is picked is
   // not what you are doing, and acting on things you have not picked is not either.
@@ -3191,13 +3409,14 @@ createMiniCanvas.plugin('export', [], function (core) {
     paintDocs();
   }
 
+  // The same markup the static buttons have, pointing at the same sprite.
   function sideButton(icon, label, action) {
     const button = document.createElement('button');
     button.className = 'side';
     button.title = label;
     button.setAttribute('aria-label', label);
-    button.innerHTML = '<span class="icon"></span>';
-    button.firstChild.textContent = icon;
+    button.innerHTML = '<svg class="icon" aria-hidden="true"><use></use></svg>';
+    button.querySelector('use').setAttribute('href', '#i-' + icon);
     button.onclick = action;
     return button;
   }
@@ -3638,7 +3857,16 @@ createMiniCanvas.plugin('export', [], function (core) {
     showScenePanel(!!state.panel);
   }
 
+  // The toolbar follows the canvas rather than tracking a tool of its own, so
+  // whatever tool the board is actually on gets the pressed button — with or
+  // without anything saved to restore. Without this a first visit, and every copy
+  // of an exported page, shows a pressed tool that is not the one in hand.
+  function syncTool() {
+    press(toolButtons, toolButtons.find((button) => button.dataset.tool === board.tool()));
+  }
+
   restoreToolbar();
+  syncTool();
   board.on('toolchange', saveToolbar);
   board.on('penchange', saveToolbar);
   hideButton.onclick = () => { showToolbar(false); saveToolbar(); };

@@ -384,6 +384,17 @@ frame first, so the hit region turns with what you see.
   drifting when you drag a handle.
 - A marquee in progress draws dashed, so it reads differently from a settled
   selection.
+- **A marquee touches a filled shape anywhere in its box, and an unfilled one only
+  where the drag crosses the stroke band or wraps around the whole ring.** Landing
+  entirely in an unfilled shape's hollow middle is not a touch — the same rule
+  `nearEdge` already applied to a single click, extended to a dragged box. Without
+  it, a marquee drawn to catch something small sitting inside a big empty
+  rectangle dragged the rectangle in too, since the marquee's box sat inside the
+  rectangle's box and a plain overlap test could not tell the difference between
+  that and actually touching it. `rect` and `oval` carry this as their own
+  `within`; text, images, and strokes are unaffected — text and images were
+  already full-box hits with nothing hollow about them, and a stroke already had
+  its own point-based `within`.
 - With more than one loose item selected, each gets its own outline plus one outer
   box carrying the handles. A group gets one outline only, because a group is one
   thing until you take it apart.
@@ -459,11 +470,16 @@ frame first, so the hit region turns with what you see.
   opposite edge. It is the same drag as a corner with one of the two scales pinned
   at 1, so everything below holds for it too. An edge is grabbed anywhere along its
   length rather than at a handle.
+- **An edge reaches outwards and barely inwards at all**: the full handle distance
+  outside the line, three pixels inside it. A band reaching in as far as it reaches
+  out means a press near the top of a shape resizes something that plainly meant to
+  pick it up, and the room inside a frame belongs to what the frame is drawn around.
+  The direction is read off the edge's own outward `push`, so the sign of the
+  offset says which side of the line the pointer is on.
 - **Handles and edges answer for the selection and nothing else.** With something
   else under the pointer, the press picks that up instead: a frame edge running past
   an unrelated shape never steals it. And since the body of a selected item is a
-  move, an unfilled shape whose only hit region is its outline is still draggable
-  once the frame has taken that outline over.
+  move, an unfilled shape whose only hit region is its outline is still draggable.
 - The scale factor is measured from where the pointer went down, not from the handle
   position, so it starts at exactly 1 and nothing jumps on the first frame.
 - Every frame scales the geometry captured when the drag started, not the previous
@@ -579,6 +595,20 @@ frame first, so the hit region turns with what you see.
   drawing code at a different context, and returns that canvas for the caller to
   turn into a blob. Pass the selection to export just that, or nothing for the whole
   scene. It fits the content with 8 units of padding and defaults to 2x.
+- **HTML downloads the whole page with the current document baked into it**: the
+  scene block is rewritten with `toText()` and stamped with the document's id and
+  name, and the file is named after the document. One file, no server, no storage
+  and nothing to send alongside it. The scene block was always what let the data
+  outlive the script; this writes one on purpose.
+- The export is a copy of the live page, so everything the chrome was doing when
+  the button was pressed is put back first: panels closed, lists emptied, the
+  toolbar returned, and the tooltip and download menu stripped of coordinates that
+  belong to a window this file will not open in. The icon font has to arrive again
+  wherever the copy lands, so it starts out waiting for it rather than claiming it
+  is already there.
+- **A note that spells out a closing script tag would end the scene block early**,
+  so every `</` is written `<\/`. JSON reads that as a plain slash, which costs
+  whoever opens the file nothing.
 - A scene holding an image from another origin taints the canvas, and the browser
   refuses to read it back. Pasted and dropped images are data URIs and export fine;
   linked ones may not.
@@ -648,10 +678,40 @@ they belong to, rather than pseudo-elements on each button. The bar is also cent
 with `margin: auto` rather than a transform, since a transform would make it a
 containing block and clip them anyway.
 
-**The icon font is the only network dependency on any of these pages**, and it
-belongs to the demo rather than to minicanvas. Every icon button also carries an
-`aria-label`, so a screen reader and a page whose font never arrived both still say
-what each button is.
+**The page has no network dependency at all.** The icons are an SVG sprite in the
+markup: 36 symbols defined once, pointed at from every button with `<use>`. They
+are on screen in the first frame, they work on a machine that has never been
+online, and an exported page carries its own — which is the case that decides it,
+since a file somebody was sent is exactly the one that cannot go and fetch a font.
+Every icon button keeps its `aria-label` all the same, because a picture is not a
+name.
+
+- **The glyphs are the official Material Symbols Outlined paths**, fetched from
+  `google/material-design-icons` (Apache License 2.0) at
+  `symbols/web/{name}/materialsymbolsoutlined/{name}_24px.svg` and inlined as one
+  `<path>` per symbol. Google ships each as a single filled shape on its own
+  `-960..960` viewBox rather than an actual stroked line — the outline look is
+  baked into the path itself — which is why there is nothing to convert: a
+  `<symbol>` carries its own viewBox independent of the sprite around it, so `<use>`
+  scales each one correctly without touching the coordinates.
+- Colour comes from the button through `fill: currentColor` on `.icon`, which is
+  what lets a pressed one invert without the icon knowing anything about it. One
+  fill, no stroke, since every glyph already is one.
+- The sprite is a definition rather than a picture, so it is `display: none` and
+  never drawn where it sits.
+- `icons/icons_official.py` in the working tree is the record of what was fetched
+  and from where, kept separate from the markup so a future re-fetch has something
+  to diff against.
+
+What it replaced, in order: the Material Symbols variable font over Google Fonts,
+subset with `icon_names` to cut it from megabytes to kilobytes, and before that, 36
+glyphs drawn by hand rather than fetched — the fetch tool available at the time
+could only open a URL already surfaced by search, and Google serves each icon at
+its own URL that search rarely happens to index, so getting the *exact* official
+paths meant the person fetching them directly and handing them back. Hand-drawn was
+the honest fallback until then, not a permanent choice: a close approximation of a
+licensed set is worse than either the real thing or a page that admits it drew its
+own.
 
 It follows two rules worth keeping in any replacement:
 
@@ -719,6 +779,11 @@ pointer. The current document is the bold one.
   `minicanvas-demo-docs` holding the ids, the names, and which one is open. Names
   live in the index and nowhere else, so drawing the list costs one small read
   rather than parsing every scene on the page.
+- **A page exported as HTML carries a document's id**, so a copy opening on a
+  machine that already has documents adds one rather than replacing them or being
+  ignored, and opening the same file twice adopts it once: the second time the id
+  is already known and whatever has been drawn on it since is what opens. A copy
+  landing somewhere brand new gets no empty document invented alongside it.
 - **Whatever a one-document page saved becomes document one.** The old
   `minicanvas-demo-scene` key is carried into a fresh document and removed, so
   nothing anyone drew before there were documents is stranded.
@@ -826,6 +891,18 @@ Each one is marked with a `ponytail:` comment in the source.
 - The search index is rebuilt whole rather than per document, and every document's
   scene is parsed to build it. Cheap for a page of notes, wrong for a hundred.
 - Documents are a list in one key. No folders, no manual ordering, no sync.
+- The HTML export serialises the live DOM rather than re-reading the source file,
+  which no page can do from a `file:` URL. What comes out is what the browser
+  thinks the markup is, tidied by hand, not the bytes that went in.
+- One document travels per exported page, the one you are in. Sending three means
+  sending three files.
+- Nothing checks the sprite against the icons the page asks for. A `<use>` pointing
+  at a symbol that is not there draws nothing at all, which is quieter than it
+  should be.
+- The sprite is fetched once by hand rather than kept in sync with upstream. A
+  future Material Symbols revision that redraws a glyph, or a name added to the
+  page, needs the same fetch-and-hand-back step repeated; nothing here notices
+  either kind of drift on its own.
 - Recency is a timestamp written when a document is opened, so two tabs on the same
   page write over each other's idea of what was most recent.
 
@@ -911,9 +988,26 @@ Deliberately absent, with the trigger that would justify adding each:
 - The switcher lost its boxes: documents are ordered by when you were last in one,
   new ones are named before they are created, and renaming ends on Enter or a check
   mark. Results grew wider and carry the document they came from underneath.
+- Download gained HTML: the whole page with the current document baked into the
+  scene block, named after the document, which opens as that document wherever it
+  lands.
+- The icons are inlined as an SVG sprite and the font is gone, so the page has no
+  network dependency left and a copy of it works offline. Double click while editing
+  text takes the word under it and dragging pulls a run out, the way a text field
+  does. A frame edge resizes from the line outwards; inside it belongs to the thing
+  the frame is drawn around.
+- The hand-drawn icons were replaced with the official Material Symbols paths, once
+  the person fetched them from Google's repository directly and handed them back —
+  same sprite, same `<use>` wiring, `fill: currentColor` in place of the stroke
+  styling the hand-drawn set needed.
+- Marquee selection stopped treating an unfilled shape's hollow middle as solid: a
+  drag that never reaches the stroke no longer selects it.
 
 Fixed along the way: the document rows took the scene panel's `.row` class with
-them, and its top border drew a box around every one.
+them, and its top border drew a box around every one; and the toolbar showed the
+pen pressed while the canvas was on the hand, because a fresh visit had no saved
+tool to restore and nothing announced the one it had. The page mounts on the pen
+now, and presses whichever button the canvas says is live.
 
 Fixed along the way: dots were unerasable, a bare click box-selected anything whose
 bounding box contained the point, space stopped panning once a toolbar button took
