@@ -342,10 +342,11 @@
     background: var(--handle-fill); border: 1.5px solid var(--selection);
   }
   .mc-knob { border-radius: 50%; }
-  /* The stalk hangs from the top edge upwards, so it is drawn downwards from the
-     handle and turned about its own bottom end. */
+  /* The stalk hangs from the knob down to the box top and turns about its top
+     centre, matching the knob's own anchor point. */
   .mc-stalk {
-    width: 0; border-left: 1.5px solid var(--selection);
+    width: 1.5px; margin-left: -0.75px;
+    background: var(--selection);
     transform-origin: 50% 0;
   }
 </style>
@@ -517,7 +518,7 @@
 <!-- The scene travels with the page. Any reader, human or machine, can find it
      without running the script. Delete the script and the data survives. -->
 <script type="application/json" id="scene">
-  {"format":"minicanvas/1","items":[{"type":"text","color":"#17171a","size":16.8,"x":496.9,"y":328.2,"text":"Welcome to minicanvas.\n\nIt's a tiny but very functional canvas that can be inlined in any HTML page.\n\nLearn the shortcuts and then hide the toolbar for the best experience.\n\nHappy drawing!"}]}
+  {"format":"minicanvas/1","items":[{"type":"text","color":"#17171a","size":16.8,"x":496.9,"y":328.2,"text":"Minicanvas.\n\nIt's a tiny but very functional canvas that can be inlined in any HTML page.\n\nLearn the shortcuts and then hide the toolbar for the best experience.\n\nHappy drawing!"}]}
 </script>
 
 <script>
@@ -2543,6 +2544,38 @@ createMiniCanvas.plugin('transform', ['select'], function (core) {
   const rotationHandle = (box) =>
     ({ x: box.x + box.w / 2, y: box.y - ROTATE_REACH / core.scene.view.scale });
 
+  // While a group or mixed selection turns, frameOf would re-fit an upright box every
+  // frame and the outline would breathe instead of spin. One boxed item already gets
+  // a turning frame from its own angle; everything else keeps the bounds from the
+  // press and applies the drag's degrees until the pointer comes up.
+  const baseSelectionFrame = core.selectionFrame;
+  core.selectionFrame = () => {
+    if (rotation && rotation.frame && !rotation.frame.angle) {
+      const lone = rotation.items.length === 1 && core.itemBox(rotation.items[0].item);
+      if (!lone) {
+        return {
+          box: rotation.frame.box, content: rotation.frame.content,
+          angle: rotation.degrees || 0, center: rotation.center
+        };
+      }
+    }
+    return baseSelectionFrame();
+  };
+
+  // A handle under the pointer wins over whatever shape is stacked beneath it. The
+  // select plugin's default only lets handles answer when nothing else is there.
+  const baseHandlesAnswer = core.handlesAnswer;
+  core.handlesAnswer = (world) => {
+    const frame = core.selectionFrame();
+    if (frame) {
+      const local = core.toFrame(world, frame);
+      const reach = core.HANDLE_SIZE / core.scene.view.scale;
+      const near = (point) => Math.abs(point.x - local.x) < reach && Math.abs(point.y - local.y) < reach;
+      if (near(rotationHandle(frame.box)) || handleAt(local, frame)) return true;
+    }
+    return baseHandlesAnswer(world);
+  };
+
   // Object.assign alone cannot remove a field the snapshot never had, so a drag
   // that adds one (an angle, say) would accumulate it frame after frame.
   function restoreOriginal(entry) {
@@ -2627,6 +2660,7 @@ createMiniCanvas.plugin('transform', ['select'], function (core) {
   }
 
   function startRotation(world) {
+    const frame = baseSelectionFrame();
     const box = core.boundsOf(core.selection);
     const center = { x: box.x + box.w / 2, y: box.y + box.h / 2 };
     const items = [...core.selection];
@@ -2638,6 +2672,8 @@ createMiniCanvas.plugin('transform', ['select'], function (core) {
       // boxed item knows its own angle; a stroke or a mixed selection does not, so
       // for those the snap is measured from where the drag started.
       base: (items.length === 1 && core.itemBox(items[0]) && items[0].angle) || 0,
+      frame: frame,
+      degrees: 0,
       items: snapshot()
     };
   }
@@ -2648,6 +2684,7 @@ createMiniCanvas.plugin('transform', ['select'], function (core) {
     // Snap the angle the item ends up at, not the amount it turned by. Something
     // sitting at 7° lands on 0° or 15°, which is what straightening means.
     if (snap) degrees = Math.round((rotation.base + degrees) / 15) * 15 - rotation.base;
+    rotation.degrees = degrees;
     for (const entry of rotation.items) {
       restoreOriginal(entry);
       rotateItem(entry.item, rotation.center, degrees);
