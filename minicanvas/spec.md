@@ -681,6 +681,97 @@ It follows two rules worth keeping in any replacement:
 - Alignment buttons name their shortcut in the tooltip, so the toolbar teaches the
   keys rather than replacing them.
 
+## Documents
+
+Also the demo page, not the primitive: minicanvas holds one scene, and how many of
+them a page keeps is the page's business. Switching is a save and a load, so none of
+this reaches inside the canvas.
+
+The current document's name sits top left. Clicking it opens a panel **over** the
+name, so the list appears where the thing you clicked was: a filter field, the
+documents, and `+ New document`. Arrows and Enter work from the field, which makes
+it a switcher rather than a menu you have to aim at. A row renames from the pencil
+and deletes from the ×, both of which hang over the end of the name rather than
+taking a column of their own, so a row nobody is pointing at is all name.
+
+It reads as a list of places to go rather than a stack of fields: no boxes, a
+little air between the rows, and the only row drawn on is the one under the
+pointer. The current document is the bold one.
+
+- **The list is ordered by when you were last in a document.** The one you want
+  next is usually the one you were in before this one, so it sits on top. Opening a
+  document stamps it, including the one the page opens with. Anything saved before
+  there were stamps sorts to the bottom.
+- **A document is named before it exists.** `+ New document` opens a field where the
+  row will be, and Enter or the check mark creates it. Nothing is written until the
+  name is, so backing out with Escape leaves no empty document to tidy up later.
+- Renaming is the same editor, reached from the pencil, and ends the same way:
+  Enter or the check mark. Both start with the name selected, so typing replaces it.
+- **An empty name is not a way out of the editor**, since a name is the whole point
+  of it: the check mark hands focus back rather than saving nothing. Clicking away
+  keeps a name you had typed and abandons an empty one, which is the reading that
+  loses nobody's work either way.
+- The check mark takes no focus when pressed, or the field's own blur would decide
+  the question before the click ever landed.
+- **A document saved before names were asked for is called after its own first line
+  of text.** A list of six things called Untitled is not a list.
+- Scenes are kept one to a key, `minicanvas-demo-doc:<id>`, with a short index at
+  `minicanvas-demo-docs` holding the ids, the names, and which one is open. Names
+  live in the index and nowhere else, so drawing the list costs one small read
+  rather than parsing every scene on the page.
+- **Whatever a one-document page saved becomes document one.** The old
+  `minicanvas-demo-scene` key is carried into a fresh document and removed, so
+  nothing anyone drew before there were documents is stranded.
+- The scene the page mounts with is written down immediately, even before anything
+  is drawn on it. Without that first write it has no key of its own and would
+  vanish the first time you switched away.
+- There is always one document, so the last one cannot be deleted: the page would
+  have no scene to show and would have to invent one. Deleting the open one lands
+  you in whichever you were in most recently.
+- Reset resets the document you are in. It is one document's undo of last resort,
+  not the page's.
+
+## Search
+
+⌘K or ⌘space, or the button top right. It matches document names and every text
+item in **every** document, as you type, and picking a result switches document if
+it has to, centres the item, and selects it: the answer to "where is that" is the
+thing outlined in front of you.
+
+A result is the matching line with the words marked, and **the document it came
+from underneath it in small text**. The panel is wider than the switcher because a
+snippet wants the whole width, and the document name below rather than beside it is
+the rest of that same trade.
+
+The index is a trie over each word and each of that word's suffixes, so `plan` and
+`ann` both reach *planning* without walking the corpus. Two things keep it small:
+
+- **It stores only the first ten characters of a word**, and
+- **it is a filter rather than an answer.** Candidates come out of the trie and a
+  plain `indexOf` confirms each one. That is what makes the depth cap safe: a query
+  longer than the trie is deep is only ever narrowed further by the characters the
+  trie never stored, and the confirming pass rejects the near misses.
+
+A multi-word query narrows the candidate lists against each other before any text
+is read, and both passes are per entry, so ranking never touches an entry that
+cannot match. A word you started typing scores above one you landed in the middle
+of, and a document's name scores above a line inside it.
+
+The index is rebuilt lazily, when the panel opens after an edit rather than on
+every keystroke, and it reads the open document live rather than from storage.
+
+**No embedding model.** A local one means megabytes of weights over the network,
+which requirement 1 settles; for a page of notes a trie is smaller and its failures
+are predictable.
+
+Both the name and the search button are chrome, so ⌘. takes them away with the
+toolbar and closes both panels. **The search panel itself is not chrome**: ⌘space
+and ⌘K open it from a bare page, since hiding the toolbar is exactly when a
+shortcut is the only way in. It is caught in the capture phase, because the canvas
+reads Space as a pan and would take the cursor with it on the way past. ⌘space is
+Spotlight on macOS and often never reaches the page at all, which is why there is a
+second key rather than one.
+
 ## Embedding
 
 ```html
@@ -729,6 +820,14 @@ Each one is marked with a `ponytail:` comment in the source.
   selected runs, but no word jumps and no IME support.
 - Grouping is one level deep and stores no order of its own.
 - There is no cut. Copy then delete is two keys and no extra code.
+- The search trie indexes suffixes only for the first 40 characters of a word,
+  which is the wrong trade for a language that does not put spaces between words.
+  A real corpus wants a suffix array, or an inverted index with positions.
+- The search index is rebuilt whole rather than per document, and every document's
+  scene is parsed to build it. Cheap for a page of notes, wrong for a hundred.
+- Documents are a list in one key. No folders, no manual ordering, no sync.
+- Recency is a timestamp written when a document is opened, so two tabs on the same
+  page write over each other's idea of what was most recent.
 
 ## Not built
 
@@ -804,6 +903,17 @@ Deliberately absent, with the trigger that would justify adding each:
 - Dragging an edge of the frame stretches one axis, with a resize cursor on every
   edge and corner that turns with the frame, a slightly heavier selection outline,
   and the body of a selected item as a place to grab it by.
+- The example page holds several documents, with a switcher under the name top left
+  and the old single-scene key carried into the first of them. Search on ⌘K or
+  ⌘space reaches every name and every text item in every document, through a trie
+  of word suffixes that narrows candidates for an `indexOf` to confirm. Both go away
+  with the toolbar; the search panel opens either way.
+- The switcher lost its boxes: documents are ordered by when you were last in one,
+  new ones are named before they are created, and renaming ends on Enter or a check
+  mark. Results grew wider and carry the document they came from underneath.
+
+Fixed along the way: the document rows took the scene panel's `.row` class with
+them, and its top border drew a box around every one.
 
 Fixed along the way: dots were unerasable, a bare click box-selected anything whose
 bounding box contained the point, space stopped panning once a toolbar button took

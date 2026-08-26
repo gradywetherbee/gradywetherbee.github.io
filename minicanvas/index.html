@@ -162,9 +162,11 @@
   .group { display: contents; }
   .group[hidden] { display: none; }
 
-  /* The scene, as data, in the corner. Out of the way until the button asks for it. */
+  /* The scene, as data, in the corner. Out of the way until the button asks for it.
+     It starts below the search button rather than beside it: the top-right corner
+     belongs to the search now. */
   #scene-panel {
-    position: fixed; top: 12px; right: 12px; width: min(400px, calc(100vw - 24px));
+    position: fixed; top: 52px; right: 12px; width: min(400px, calc(100vw - 24px));
     background: var(--surface); border: 1px solid var(--rule); border-radius: 8px;
     box-shadow: 0 4px 16px var(--shadow); overflow: hidden;
   }
@@ -186,6 +188,87 @@
   }
   #download-menu button { width: 100%; justify-content: flex-start; border-color: transparent; }
   #download-menu button:hover { background: var(--chrome); }
+
+  /* --- documents and search ------------------------------------------------
+     Neither belongs to minicanvas: a canvas primitive has no opinion about how
+     many of them a page keeps or how you find one. Both live in the top corners
+     and both leave with the toolbar, since ⌘. means all of the chrome. */
+  .top-chrome {
+    position: fixed; top: 12px; z-index: 3;
+    background: var(--surface); border-color: var(--rule);
+    transition: opacity .15s ease, transform .15s ease;
+  }
+  .top-chrome.away { opacity: 0; transform: translateY(-8px); pointer-events: none; }
+  #doc-button { left: 12px; max-width: min(320px, 45vw); justify-content: flex-start; }
+  #doc-button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #search-button { right: 12px; }
+
+  #doc-panel, #search-panel {
+    position: fixed; top: 12px; z-index: 4; padding: 6px;
+    background: var(--surface); border: 1px solid var(--rule); border-radius: 10px;
+    box-shadow: 0 6px 24px var(--shadow);
+  }
+  #doc-panel { left: 12px; width: min(260px, calc(100vw - 24px)); }
+  #search-panel { right: 12px; width: min(560px, calc(100vw - 24px)); }
+  #doc-panel[hidden], #search-panel[hidden] { display: none; }
+
+  .field {
+    width: 100%; height: 30px; padding: 0 8px; font: inherit; color: inherit;
+    background: var(--chrome); border: 1px solid transparent; border-radius: 7px;
+  }
+  .field:focus { outline: none; border-color: var(--rule); }
+
+  /* A list of places to go, not a stack of fields: no boxes, a little air between
+     the rows, and the only thing drawn on a row is the one under the pointer. */
+  .list {
+    display: flex; flex-direction: column; gap: 3px; margin-top: 6px;
+    max-height: min(52vh, 380px); overflow-y: auto;
+  }
+  .list:empty { display: none; }
+  /* Two classes deep on purpose: the square-icon-button rule is `button:has(> .icon)`,
+     which outweighs a single class and would pin these rows to 30 pixels wide.
+     `.doc-row` rather than `.row` for the same reason in reverse: the scene panel
+     already owns `.row`, and its top border turned every document into a box. */
+  .list .pick {
+    display: flex; flex-direction: column; align-items: stretch; gap: 1px;
+    width: 100%; height: auto; min-height: 30px; padding: 6px 8px;
+    text-align: left; justify-content: center; border-radius: 7px;
+  }
+  .list .pick[aria-selected="true"], .list .pick:hover { background: var(--chrome); }
+  .list .pick[aria-current="true"] { font-weight: 600; }
+  .list .pick .label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* Which document a result came from, under the line it matched rather than
+     beside it: a snippet wants the whole width. */
+  .list .pick .where {
+    font-size: 11px; opacity: .55;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .list .pick mark { background: var(--selection-tint); color: inherit; border-radius: 2px; }
+  .list .pick.new { opacity: .55; }
+
+  /* A row carries controls of its own, so the row is a div and the name inside it
+     is the button: a button inside a button is not a thing. Rename and delete hang
+     over the end of the name rather than taking a column of their own, so a row
+     that is not being pointed at is all name. */
+  .list .doc-row { position: relative; display: flex; align-items: center; }
+  .list .doc-row .pick { flex: 1 1 auto; min-width: 0; }
+  .list .doc-row .sides {
+    position: absolute; right: 3px; top: 50%; transform: translateY(-50%);
+    display: flex; gap: 2px; opacity: 0; pointer-events: none;
+  }
+  .list .doc-row:hover .sides, .list .doc-row:focus-within .sides { opacity: 1; pointer-events: auto; }
+  /* They only ever appear over a row that is being pointed at, so they take that
+     row's colour rather than the panel's: a white square over a grey row reads as
+     a hole in it. */
+  .list .side { width: 24px; min-width: 24px; height: 24px; padding: 0; background: var(--chrome); }
+  .list .side:hover, .list .side:focus-visible { background: var(--rule); }
+  .list .side .icon { font-size: 16px; }
+  /* Naming something: the field takes the row and the check mark sits on the end,
+     out in the open rather than on hover, because it is the way out of the state. */
+  .list .doc-row.editing { gap: 4px; }
+  .list .doc-row .field { flex: 1 1 auto; min-width: 0; border-color: var(--rule); }
+  .list .doc-row.editing .side { opacity: 1; pointer-events: auto; background: var(--chrome); }
+  .empty { padding: 6px 8px; opacity: .55; }
 </style>
 
 <canvas id="board"></canvas>
@@ -268,6 +351,25 @@
 </div>
 
 <button id="peek" data-tip="Show toolbar · ⌘." aria-label="Show toolbar"><span class="icon">more_horiz</span></button>
+
+<!-- Which document you are in, top left, and the way to any other one. The panel
+     opens over the button, so the name you clicked is where the list appears. -->
+<button id="doc-button" class="top-chrome" title="Switch document" aria-expanded="false" aria-label="Documents"><span id="doc-name">Untitled</span></button>
+
+<div id="doc-panel" hidden>
+  <input id="doc-filter" class="field" type="text" placeholder="Find a document" aria-label="Find a document" spellcheck="false">
+  <div id="doc-list" class="list"></div>
+</div>
+
+<!-- Search, top right. The button goes away with the toolbar; ⌘space and ⌘K open
+     the panel either way, since a shortcut is the only way in once the chrome is
+     hidden and a shortcut nobody can reach is no way in at all. -->
+<button id="search-button" class="top-chrome" title="Search · ⌘K" aria-label="Search"><span class="icon">search</span></button>
+
+<div id="search-panel" hidden>
+  <input id="search-field" class="field" type="text" placeholder="Search every document" aria-label="Search every document" spellcheck="false">
+  <div id="search-list" class="list"></div>
+</div>
 
 <div id="tip"></div>
 
@@ -2735,15 +2837,49 @@ createMiniCanvas.plugin('export', [], function (core) {
 /* Demo wiring. None of this belongs to the primitive; delete it when embedding. */
 (function () {
   // Whatever was drawn last time, or the scene baked into the page the first time.
-  const SAVE_KEY = 'minicanvas-demo-scene';
+  // A page can hold several documents, so the scenes are kept one to a key with a
+  // short index listing them. Names are in the index and nowhere else, so reading
+  // the list costs one small read rather than parsing every scene on the page.
+  const DOCS_KEY = 'minicanvas-demo-docs';
+  const OLD_KEY = 'minicanvas-demo-scene';   // what the one-document version wrote
+  const docKey = (id) => 'minicanvas-demo-doc:' + id;
   const store = (() => {
-    try { window.localStorage.getItem(SAVE_KEY); return window.localStorage; }
+    try { window.localStorage.getItem(DOCS_KEY); return window.localStorage; }
     catch (error) { return null; }   // private mode, a sandboxed frame, or no storage at all
   })();
-  const saved = store && store.getItem(SAVE_KEY);
+
+  const freshId = () => 'd' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  const EMPTY = '{"format":"minicanvas/1","items":[]}';
+  const read = (key) => { try { return store && store.getItem(key); } catch (error) { return null; } };
+  const write = (key, value) => { try { if (store) store.setItem(key, value); } catch (error) { /* full, or refused */ } };
+  const docText = (id) => read(docKey(id));
+
+  // `name` is null until someone types one, and an unnamed document is called after
+  // its own first line of text. A list of six things called Untitled is not a list.
+  const docs = (() => {
+    let index = null;
+    try { index = JSON.parse(read(DOCS_KEY) || 'null'); } catch (error) { index = null; }
+    if (index && Array.isArray(index.list) && index.list.length) return index;
+    // First run, or a page saved before there were documents: whatever sat under
+    // the old single-scene key becomes document one rather than being stranded.
+    const id = freshId();
+    const carried = read(OLD_KEY);
+    if (carried) { write(docKey(id), carried); try { store.removeItem(OLD_KEY); } catch (error) { /* nothing to clear */ } }
+    return { current: id, list: [{ id: id, name: null }] };
+  })();
+
+  let currentId = docs.list.some((doc) => doc.id === docs.current) ? docs.current : docs.list[0].id;
+  const saveDocs = () => write(DOCS_KEY, JSON.stringify(docs));
+  // The list is ordered by when you were last in a document, so the one you want
+  // next is usually the one on top. Opening one stamps it; anything from before
+  // there were stamps sorts to the bottom in the order it was written.
+  const opened = docs.list.find((doc) => doc.id === currentId);
+  if (opened) opened.used = Date.now();
+  const byRecent = () => docs.list.slice().sort((a, b) => (b.used || 0) - (a.used || 0));
+  saveDocs();   // a first run, or a migration, is written down before anything is drawn
 
   const board = MiniCanvas.mount('#board', {
-    scene: saved || '#scene'   // every feature on the page is loaded by default
+    scene: docText(currentId) || '#scene'   // every feature on the page is loaded by default
   });
 
   const sceneText = document.getElementById('scene-text');
@@ -2802,8 +2938,9 @@ createMiniCanvas.plugin('export', [], function (core) {
     try { board.load(sceneText.value); } catch (error) { alert('That is not valid JSON: ' + error.message); }
   };
   document.getElementById('reset').onclick = () => {
-    if (store) try { store.removeItem(SAVE_KEY); } catch (error) { /* nothing to clear */ }
-    board.load(document.getElementById('scene').textContent);
+    board.load(document.getElementById('scene').textContent);   // this document only
+    lastSaved = null;
+    save();
     dump();
   };
 
@@ -2823,13 +2960,19 @@ createMiniCanvas.plugin('export', [], function (core) {
   //
   // So: save after anything that could have finished an edit, and compare the text
   // before writing, which makes the extra calls free when nothing actually moved.
-  let lastSaved = saved || null;
+  let lastSaved = board.toText();
+  // The scene the page mounted with belongs to the open document even if nobody
+  // has drawn on it yet. Without this first write it has no key of its own, and
+  // the welcome scene would vanish the first time you switched away from it.
+  if (!docText(currentId)) write(docKey(currentId), lastSaved);
+
   function save() {
-    if (!store) return;
     const text = board.toText();
     if (text === lastSaved) return;   // nothing changed since the last write
     lastSaved = text;
-    try { store.setItem(SAVE_KEY, text); } catch (error) { /* full, or refused */ }
+    write(docKey(currentId), text);
+    stale = true;                     // the search index is now one edit behind
+    paintDocName();                   // an unnamed document is named by its first line
     if (!scenePanel.hidden) dump();   // keep the panel honest, but never fight a typist
   }
 
@@ -2983,6 +3126,462 @@ createMiniCanvas.plugin('export', [], function (core) {
   document.body.addEventListener('pointerout', () => tip.classList.remove('here'));
   document.body.addEventListener('pointerdown', () => tip.classList.remove('here'));
 
+  // --- documents ------------------------------------------------------------
+  // The primitive holds one scene. How many of them a page keeps is the page's
+  // business, so all of this is wiring around it: switching documents is a save
+  // and a load, and nothing here reaches inside the canvas to do it.
+  const docButton = document.getElementById('doc-button');
+  const docLabel = document.getElementById('doc-name');
+  const docPanel = document.getElementById('doc-panel');
+  const docFilter = document.getElementById('doc-filter');
+  const docList = document.getElementById('doc-list');
+
+  const docById = (id) => docs.list.find((doc) => doc.id === id);
+  const sceneOf = (id) => {
+    if (id === currentId) return board.scene();     // the open one is live, not stored
+    try { return JSON.parse(docText(id) || EMPTY); } catch (error) { return null; }
+  };
+
+  // What a document is called when nobody has named it: its own first line, the
+  // way a note names itself. A list of six things called Untitled is not a list.
+  function firstLine(scene) {
+    for (const item of (scene && scene.items) || []) {
+      if (item.type !== 'text') continue;
+      const line = String(item.text || '').split('\n').find((part) => part.trim());
+      if (line) return line.trim().slice(0, 40);
+    }
+    return '';
+  }
+  const nameOf = (doc, scene) => doc.name || firstLine(scene) || 'Untitled';
+  const titleOf = (doc) => nameOf(doc, sceneOf(doc.id));
+
+  function paintDocName() { docLabel.textContent = titleOf(docById(currentId)); }
+
+  function loadCurrent() {
+    try { board.load(docText(currentId) || EMPTY); }
+    catch (error) { board.load(EMPTY); }   // a corrupt key is an empty page, not a dead one
+    lastSaved = board.toText();
+    paintDocName();
+    dump();
+  }
+
+  function openDoc(id) {
+    showDocs(false);
+    const doc = docById(id);
+    if (doc) doc.used = Date.now();
+    if (id === currentId) { saveDocs(); return; }
+    save();                       // what is on screen belongs to the document it came from
+    currentId = docs.current = id;
+    saveDocs();
+    loadCurrent();
+  }
+
+  function dropDoc(id) {
+    const doc = docById(id);
+    if (!doc || docs.list.length < 2) return;   // there is always one document
+    if (!window.confirm('Delete "' + titleOf(doc) + '"? This cannot be undone.')) return;
+    docs.list = docs.list.filter((entry) => entry.id !== id);
+    try { if (store) store.removeItem(docKey(id)); } catch (error) { /* already gone */ }
+    stale = true;
+    if (id === currentId) {
+      currentId = docs.current = byRecent()[0].id;   // whatever you were in most recently
+      loadCurrent();
+    }
+    saveDocs();
+    paintDocs();
+  }
+
+  function sideButton(icon, label, action) {
+    const button = document.createElement('button');
+    button.className = 'side';
+    button.title = label;
+    button.setAttribute('aria-label', label);
+    button.innerHTML = '<span class="icon"></span>';
+    button.firstChild.textContent = icon;
+    button.onclick = action;
+    return button;
+  }
+
+  // One editor for both jobs: naming a new document and renaming an old one. The
+  // row becomes a field and a check mark, and Enter does what the check mark does.
+  // A name is the whole point of the state, so an empty one is not a way out of it:
+  // the check mark hands focus back rather than saving nothing.
+  function editName(row, value, commit, cancel) {
+    row.textContent = '';
+    row.className = 'doc-row editing';
+    const field = document.createElement('input');
+    field.className = 'field';
+    field.placeholder = 'Document name';
+    field.spellcheck = false;
+    field.value = value;
+    let over = false;
+    const finish = (keep) => {
+      if (over) return;
+      const name = field.value.trim();
+      if (keep && !name) { field.focus(); return; }
+      over = true;
+      if (keep) commit(name); else cancel();
+      docFilter.focus();
+    };
+    const done = sideButton('check', 'Save name', () => finish(true));
+    // Pressing the check mark must not take focus off the field, or the blur below
+    // would fire first and decide the question before the click ever landed.
+    done.onmousedown = (event) => event.preventDefault();
+    field.onkeydown = (event) => {
+      if (event.key === 'Enter') { finish(true); event.preventDefault(); }
+      if (event.key === 'Escape') { event.stopPropagation(); finish(false); }
+    };
+    // Clicking away keeps a name you had typed and abandons an empty one, which is
+    // the reading that loses nobody's work either way.
+    field.onblur = () => finish(!!field.value.trim());
+    row.appendChild(field);
+    row.appendChild(done);
+    field.focus();
+    field.select();
+  }
+
+  function startRename(doc, row) {
+    editName(row, titleOf(doc), (name) => {
+      doc.name = name;
+      saveDocs();
+      stale = true;
+      if (doc.id === currentId) paintDocName();
+      paintDocs();
+    }, paintDocs);
+  }
+
+  // A new document is named before it exists. Nothing is written until the name is,
+  // so backing out leaves no empty document behind to be tidied up later.
+  function startNewDoc() {
+    const row = document.createElement('div');
+    row.className = 'doc-row';
+    docList.insertBefore(row, docList.firstChild);   // where it will sit once it is real
+    editName(row, '', (name) => {
+      const doc = { id: freshId(), name: name, used: Date.now() };
+      docs.list.push(doc);
+      write(docKey(doc.id), EMPTY);
+      stale = true;
+      openDoc(doc.id);              // which closes the panel and saves the index
+    }, paintDocs);
+  }
+
+  function paintDocs() {
+    const filter = docFilter.value.trim().toLowerCase();
+    docList.textContent = '';
+    for (const doc of byRecent()) {
+      const title = titleOf(doc);
+      if (filter && title.toLowerCase().indexOf(filter) < 0) continue;
+      const row = document.createElement('div');
+      row.className = 'doc-row';
+      const pick = document.createElement('button');
+      pick.className = 'pick';
+      pick.dataset.pick = '';
+      pick.setAttribute('aria-current', String(doc.id === currentId));
+      const label = document.createElement('span');
+      label.className = 'label';
+      label.textContent = title;
+      pick.appendChild(label);
+      pick.onclick = () => openDoc(doc.id);
+      row.appendChild(pick);
+      const sides = document.createElement('span');
+      sides.className = 'sides';
+      sides.appendChild(sideButton('edit', 'Rename', () => startRename(doc, row)));
+      // Nothing to delete when there is one document: the page would have no scene
+      // to show and would have to invent one.
+      if (docs.list.length > 1) {
+        sides.appendChild(sideButton('close', 'Delete', () => dropDoc(doc.id)));
+      }
+      row.appendChild(sides);
+      docList.appendChild(row);
+    }
+    const add = document.createElement('button');
+    add.className = 'pick new';
+    add.dataset.pick = '';
+    add.textContent = '+ New document';
+    add.onclick = startNewDoc;
+    docList.appendChild(add);
+    docNav.reset();
+  }
+
+  // --- search ---------------------------------------------------------------
+  // Every document's name and every text item in every document, matched as you
+  // type. The index is a trie over each word and each of that word's suffixes, so
+  // "plan" and "ann" both reach "planning" without walking the corpus.
+  //
+  // The trie is a filter rather than an answer: it narrows to candidates and a
+  // plain indexOf confirms each one. That is what lets it stop ten characters
+  // deep and stay small, since a longer query is only ever narrowed further by
+  // the characters the trie never stored.
+  //
+  // ponytail: suffixes are indexed only for the first WORD_REACH characters of a
+  // word, which is the wrong trade for a language that does not put spaces
+  // between words. A real corpus wants a suffix array or an inverted index with
+  // positions; a page of notes does not. An embedding model would want megabytes
+  // of weights over the network, which the no-dependencies rule settles.
+  const DEPTH = 10;        // characters of a word the trie actually stores
+  const WORD_REACH = 40;   // how far into a long word its suffixes are indexed
+  const WORDS = /[^\p{L}\p{N}]+/u;
+  const trie = { kids: null, post: null };
+  let entries = [];
+  let stale = true;
+
+  const searchButton = document.getElementById('search-button');
+  const searchPanel = document.getElementById('search-panel');
+  const searchField = document.getElementById('search-field');
+  const searchList = document.getElementById('search-list');
+
+  function addWord(word, from, id) {
+    let node = trie;
+    for (let at = from; at < word.length && at - from < DEPTH; at++) {
+      const kids = node.kids || (node.kids = Object.create(null));
+      node = kids[word[at]] || (kids[word[at]] = { kids: null, post: null });
+      const post = node.post || (node.post = []);
+      // Entries go in one at a time, so a repeat of the same id is always the one
+      // already on the end. No set, no sort, no duplicates.
+      if (post[post.length - 1] !== id) post.push(id);
+    }
+  }
+
+  function addEntry(entry) {
+    entry.low = entry.text.toLowerCase();
+    const id = entries.push(entry) - 1;
+    for (const word of entry.low.split(WORDS)) {
+      for (let at = 0; at < word.length && at < WORD_REACH; at++) addWord(word, at, id);
+    }
+  }
+
+  function buildIndex() {
+    entries = [];
+    trie.kids = null;
+    for (const doc of docs.list) {
+      const scene = sceneOf(doc.id);
+      const title = nameOf(doc, scene);
+      addEntry({ docId: doc.id, title: title, text: title, kind: 'name' });
+      ((scene && scene.items) || []).forEach((item, at) => {
+        if (item.type !== 'text' || !item.text) return;
+        addEntry({ docId: doc.id, title: title, text: String(item.text), kind: 'text', at: at });
+      });
+    }
+    stale = false;
+  }
+
+  function lookup(token) {
+    let node = trie;
+    for (let at = 0; at < token.length && at < DEPTH; at++) {
+      if (!node.kids) return null;
+      node = node.kids[token[at]];
+      if (!node) return null;
+    }
+    return node.post;
+  }
+
+  function search(query) {
+    const tokens = query.toLowerCase().split(/\s+/).filter(Boolean);
+    if (!tokens.length) return [];
+    if (stale) buildIndex();
+    // Every word has to be somewhere in the entry, so the candidate lists narrow
+    // each other before anything is read.
+    let pool = null;
+    for (const token of tokens) {
+      const found = lookup(token);
+      if (!found) return [];
+      if (!pool) { pool = found.slice(); continue; }
+      const narrow = new Set(found);
+      pool = pool.filter((id) => narrow.has(id));
+      if (!pool.length) return [];
+    }
+    const hits = [];
+    for (const id of pool) {
+      const entry = entries[id];
+      let score = entry.kind === 'name' ? 40 : 0;   // a document is more than a line in one
+      let matched = true;
+      for (const token of tokens) {
+        const at = entry.low.indexOf(token);        // the trie narrows; this decides
+        if (at < 0) { matched = false; break; }
+        // A word you started typing beats one you landed in the middle of.
+        score += (at === 0 || WORDS.test(entry.low[at - 1])) ? 10 : 2;
+      }
+      if (matched) hits.push({ entry: entry, score: score });
+    }
+    hits.sort((a, b) => b.score - a.score);
+    return hits.slice(0, 50).map((hit) => hit.entry);
+  }
+
+  // A window around the first match, since a text item can be a paragraph and a
+  // result row is a line.
+  function snippet(text, tokens) {
+    const flat = text.replace(/\s+/g, ' ').trim();
+    const low = flat.toLowerCase();
+    let at = -1;
+    for (const token of tokens) {
+      const found = low.indexOf(token);
+      if (found >= 0 && (at < 0 || found < at)) at = found;
+    }
+    const from = at < 30 ? 0 : at - 25;
+    const REACH = 140;   // as much of the line as the panel is wide enough to read
+    return (from ? '…' : '') + flat.slice(from, from + REACH) + (flat.length > from + REACH ? '…' : '');
+  }
+
+  // Built out of nodes rather than a string of HTML: what is being marked up here
+  // is somebody's notes, and notes are allowed to contain angle brackets.
+  function paintMatch(node, text, tokens) {
+    const low = text.toLowerCase();
+    const hits = [];
+    for (const token of tokens) {
+      for (let at = low.indexOf(token); at >= 0; at = low.indexOf(token, at + token.length)) {
+        hits.push([at, at + token.length]);
+      }
+    }
+    hits.sort((a, b) => a[0] - b[0]);
+    let cursor = 0;
+    for (const [from, to] of hits) {
+      if (from < cursor) continue;              // overlapping words: the first one wins
+      node.appendChild(document.createTextNode(text.slice(cursor, from)));
+      const mark = document.createElement('mark');
+      mark.textContent = text.slice(from, to);
+      node.appendChild(mark);
+      cursor = to;
+    }
+    node.appendChild(document.createTextNode(text.slice(cursor)));
+  }
+
+  // Put the found item in the middle of the window and select it, so the answer to
+  // "where is that" is the thing outlined in front of you.
+  function focusItem(at) {
+    const item = board.scene().items[at];
+    if (!item) return;
+    const box = board.core.boundsOf([item]);
+    if (!box) return;
+    const view = board.scene().view;
+    view.scale = Math.max(0.5, Math.min(view.scale, 2));   // legible, without a jump either way
+    view.x = box.x + box.w / 2 - board.core.canvas.clientWidth / 2 / view.scale;
+    view.y = box.y + box.h / 2 - board.core.canvas.clientHeight / 2 / view.scale;
+    if (board.core.selection) {
+      board.core.selection.clear();
+      board.core.selection.add(item);
+    }
+    board.redraw();
+  }
+
+  function go(entry) {
+    showSearch(false);
+    if (entry.docId !== currentId) openDoc(entry.docId);
+    if (entry.kind === 'text') focusItem(entry.at);
+  }
+
+  function paintResults() {
+    const tokens = searchField.value.toLowerCase().split(/\s+/).filter(Boolean);
+    searchList.textContent = '';
+    if (!tokens.length) { searchNav.reset(); return; }
+    const found = search(searchField.value);
+    if (!found.length) {
+      const nothing = document.createElement('div');
+      nothing.className = 'empty';
+      nothing.textContent = 'No matches';
+      searchList.appendChild(nothing);
+      searchNav.reset();
+      return;
+    }
+    for (const entry of found) {
+      const pick = document.createElement('button');
+      pick.className = 'pick';
+      pick.dataset.pick = '';
+      const label = document.createElement('span');
+      label.className = 'label';
+      paintMatch(label, snippet(entry.text, tokens), tokens);
+      const where = document.createElement('span');
+      where.className = 'where';
+      where.textContent = entry.kind === 'name' ? 'document' : entry.title;
+      pick.appendChild(label);
+      pick.appendChild(where);
+      pick.onclick = () => go(entry);
+      searchList.appendChild(pick);
+    }
+    searchNav.reset();
+  }
+
+  // --- opening and closing --------------------------------------------------
+  function showDocs(showing) {
+    docPanel.hidden = !showing;
+    docButton.hidden = showing;      // the panel opens where the name was
+    docButton.setAttribute('aria-expanded', String(showing));
+    if (!showing) return;
+    showSearch(false);
+    docFilter.value = '';
+    paintDocs();
+    docFilter.focus();
+  }
+
+  function showSearch(showing) {
+    searchPanel.hidden = !showing;
+    if (!showing) return;
+    showDocs(false);
+    if (stale) buildIndex();
+    paintResults();
+    searchField.focus();
+    searchField.select();
+  }
+
+  // Both panels are a field, a list, arrows and Enter. One helper, so the two
+  // cannot drift apart.
+  function navigable(field, list, close) {
+    let at = 0;
+    const rows = () => [...list.querySelectorAll('[data-pick]')];
+    const mark = (items) => items.forEach((row, index) =>
+      row.setAttribute('aria-selected', String(index === at)));
+    field.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') { event.stopPropagation(); close(); return; }
+      const items = rows();
+      if (!items.length) return;
+      at = Math.min(at, items.length - 1);
+      if (event.key === 'Enter') { items[at].click(); event.preventDefault(); return; }
+      const step = event.key === 'ArrowDown' ? 1 : event.key === 'ArrowUp' ? -1 : 0;
+      if (!step) return;
+      at = (at + step + items.length) % items.length;
+      mark(items);
+      items[at].scrollIntoView({ block: 'nearest' });
+      event.preventDefault();
+    });
+    return { reset: () => { at = 0; mark(rows()); } };
+  }
+  const docNav = navigable(docFilter, docList, () => showDocs(false));
+  const searchNav = navigable(searchField, searchList, () => showSearch(false));
+
+  docButton.onclick = () => showDocs(true);
+  searchButton.onclick = () => showSearch(searchPanel.hidden);
+  docFilter.oninput = paintDocs;
+  searchField.oninput = paintResults;
+
+  // ⌘space and ⌘K both open the search, hidden toolbar or not. Caught in the
+  // capture phase because the canvas reads Space as a pan and would take the
+  // cursor with it on the way past. Two keys rather than one because ⌘space is
+  // Spotlight on macOS and often never reaches the page at all.
+  window.addEventListener('keydown', (event) => {
+    if (!(event.ctrlKey || event.metaKey)) return;
+    const wanted = event.code === 'Space' || event.key === ' '
+                || event.code === 'KeyK' || (event.key || '').toLowerCase() === 'k';
+    if (!wanted) return;
+    event.preventDefault();
+    event.stopPropagation();
+    showSearch(true);
+  }, true);
+
+  window.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape') return;
+    showDocs(false);
+    showSearch(false);
+  });
+
+  // A press anywhere else puts them away, the same as the download menu.
+  window.addEventListener('pointerdown', (event) => {
+    const target = event.target;
+    if (!target || !target.closest) return;
+    if (!target.closest('#doc-panel, #doc-button')) showDocs(false);
+    if (!target.closest('#search-panel, #search-button')) showSearch(false);
+  });
+
+  paintDocName();
+
   // ⌘. gets the chrome out of the way. The bar and the pill that brings it back
   // are the same toggle, so there is only one piece of state to be wrong about.
   const toolbar = document.getElementById('toolbar');
@@ -2990,6 +3589,11 @@ createMiniCanvas.plugin('export', [], function (core) {
   const showToolbar = (showing) => {
     toolbar.classList.toggle('away', !showing);
     peek.classList.toggle('here', !showing);
+    // The document name and the search button are chrome too, and ⌘. means all of
+    // it. The search panel itself is not: ⌘space still opens it from a bare page.
+    docButton.classList.toggle('away', !showing);
+    searchButton.classList.toggle('away', !showing);
+    if (!showing) { showDocs(false); showSearch(false); }
   };
   const hideButton = document.getElementById('hide');
   hideButton.onclick = () => showToolbar(false);
