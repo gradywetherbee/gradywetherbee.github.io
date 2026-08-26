@@ -1,7 +1,9 @@
 # minicanvas spec
 
 Version 1 of the format (`minicanvas/1`). This document tracks what the thing is
-meant to do; `minicanvas.html` is the implementation and the demo page around it.
+meant to do; `index.html` in this folder is the implementation and the demo page
+around it. The DOM build lives in `minicanvas/index.html`; both read and write the
+same scene JSON.
 
 ## Goal
 
@@ -99,7 +101,11 @@ because undo and redo deliberately record no edit and their buttons are not on t
 canvas. Anything persisting a scene needs the same treatment: `change` alone will
 save you the position an item was dragged *from*.
 
-Panning and zooming are not edits.
+Panning and zooming are not edits. While the camera is moving, the canvas repaints
+every frame but **selection overlay repositioning waits until the gesture ends**,
+since handles are the expensive part of a view tick, not the bitmap itself. Wheel
+and pinch end is debounced briefly so a scroll does not flicker the overlay on
+every tick.
 
 The page keeps the toolbar under a **separate key**: which tool, the pen's colour,
 width, opacity and fill, whether the bar is showing, and whether the scene panel is
@@ -327,7 +333,7 @@ tool shortcuts are just letters again.
 | drag, rect or oval tool | Drag out the shape from the corner where you started. A click with no drag leaves nothing behind and costs no undo step. |
 | click, text tool | Place a caret and start typing. The item stays centred on that point as it grows, and the select tool comes back immediately so the next click can go anywhere. |
 | double click a text item, select tool | Reopen it with the caret at the letter you clicked |
-| click an item, select tool | Select it, or its whole group. Shift-click adds or removes. |
+| click an item, select tool | Select it, or its whole group. Shift-click adds or removes. Right-click and ctrl/cmd-click do nothing to the selection. |
 | drag from empty canvas, select tool | Box-select everything the rectangle touches |
 | drag from an item, select tool | Move the whole selection |
 | drag inside a selected item | Move the whole selection, even where the item itself is hollow and catches nothing |
@@ -339,6 +345,7 @@ tool shortcuts are just letters again.
 | ctrl/cmd + wheel, or pinch | Zoom toward the pointer, clamped between 0.05x and 40x |
 | | Sensitivity is `core.zoomRate`, default 4. Zoom is multiplicative, so the rate is an exponent: 4 means a gesture covers four times the zoom range 1 did. Set it live to retune. |
 | middle-drag | Pan |
+| drag on the canvas | Does not sweep toolbar labels or other page chrome into a browser selection: `body.mc-dragging`, `selectstart`, and `preventDefault` on pointerdown block that for the duration of the press |
 | paste or drop an image | Insert it at the viewport center, scaled to fit 600 units, as a data URI |
 
 ## Hit testing
@@ -382,8 +389,18 @@ frame first, so the hit region turns with what you see.
   `content` is where the coordinates are, and is what a resize anchors to. Keeping
   them separate is what lets the outline hug the ink without the anchored corner
   drifting when you drag a handle.
-- A marquee in progress draws dashed, so it reads differently from a settled
-  selection.
+- **A marquee in progress draws as a solid grey filled box**, in its own colour
+  rather than the selection's: it is a region being swept, not a thing that has
+  been chosen, so it leaves the blue to the outlines inside it.
+- **What the marquee is over is outlined in selection blue while the drag is live,
+  and only actually selected when the button comes up.** The preview promises exactly
+  what letting go will take, group members included. Handles are left off it: they
+  belong to a selection you can already act on, and this one does not exist yet.
+- The preview is recomputed against the whole scene on every move rather than
+  accumulated, so dragging back over something takes it out again the same way it
+  went in.
+- Nothing enters the selection until the release, which is what keeps every plugin
+  listening for a selection change from hearing one on every frame of a drag.
 - **A marquee touches a filled shape anywhere in its box, and an unfilled one only
   where the drag crosses the stroke band or wraps around the whole ring.** Landing
   entirely in an unfilled shape's hollow middle is not a touch — the same rule
@@ -476,10 +493,13 @@ frame first, so the hit region turns with what you see.
   pick it up, and the room inside a frame belongs to what the frame is drawn around.
   The direction is read off the edge's own outward `push`, so the sign of the
   offset says which side of the line the pointer is on.
-- **Handles and edges answer for the selection and nothing else.** With something
-  else under the pointer, the press picks that up instead: a frame edge running past
-  an unrelated shape never steals it. And since the body of a selected item is a
-  move, an unfilled shape whose only hit region is its outline is still draggable.
+- **A handle under the pointer wins over whatever shape is stacked beneath it.**
+  Rotate, corner, and edge grabs on the current selection take precedence, so a
+  press on the rotation knob does not select an unrelated item underneath. Elsewhere
+  on the frame, something not in the selection under the pointer is still asking to
+  be picked up, and picking it up beats resizing through a frame edge that happens
+  to run past. The body of a selected item is always a move, even where the item
+  itself is hollow and catches nothing on its outline alone.
 - The scale factor is measured from where the pointer went down, not from the handle
   position, so it starts at exactly 1 and nothing jumps on the first frame.
 - Every frame scales the geometry captured when the drag started, not the previous
@@ -494,9 +514,15 @@ frame first, so the hit region turns with what you see.
   never moves the right edge, and vice versa.
 - Stroke and outline weights never change. See the format rule above.
 - The rotation handle sits on a short stalk above the selection box, so it never
-  covers the work. Rotating turns the whole selection about the selection's centre:
+  covers the work. The stalk is centred on the knob, and both turn about the same
+  top-centre anchor. Rotating turns the whole selection about the selection's centre:
   boxed items swing their position and add to their `angle`, strokes have the turn
   baked into their points.
+- **While a group or mixed selection is turning, the outer frame spins with the
+  drag** rather than re-fitting an upright box every frame. The bounds at press time
+  are frozen and the cumulative angle is applied until the pointer comes up, when the
+  frame settles back to an upright fit. A lone rotated item already behaved this way
+  through its own `angle`; this extends the same feedback to multi-item selections.
 - **Shift snaps the angle the item lands on, not the amount it turned by.** Something
   sitting at 7° goes to 0° or 15°, never to 22°. That is what straightening means,
   and snapping the delta instead would leave a crooked thing permanently crooked.
@@ -1002,6 +1028,15 @@ Deliberately absent, with the trigger that would justify adding each:
   styling the hand-drawn set needed.
 - Marquee selection stopped treating an unfilled shape's hollow middle as solid: a
   drag that never reaches the stroke no longer selects it.
+- The marquee became a solid grey box with blue preview outlines while you drag,
+  and commits only on release.
+- Pan and zoom defer selection-overlay repositioning until the camera settles.
+- Right-click and ctrl/cmd-click no longer change the selection. Shift-click still
+  adds or removes.
+- Dragging on the canvas no longer sweeps toolbar labels into a browser selection.
+- Rotate, corner, and edge handles take precedence over shapes stacked underneath.
+- While rotating a group, the selection frame spins with the drag rather than
+  breathing to a new upright box each frame.
 
 Fixed along the way: the document rows took the scene panel's `.row` class with
 them, and its top border drew a box around every one; and the toolbar showed the

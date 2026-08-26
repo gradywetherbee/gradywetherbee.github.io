@@ -33,6 +33,8 @@
     --handle-fill: #ffffff;                  --handle-fill: oklch(1 0 0);
     --selection: #1a73ff;                    --selection: oklch(0.60 0.21 258);
     --selection-tint: rgba(26,115,255,.28);  --selection-tint: oklch(0.60 0.21 258 / 0.28);
+    --marquee: #a8a8a4;                      --marquee: oklch(0.74 0.003 285);
+    --marquee-fill: rgba(120,120,116,.12);   --marquee-fill: oklch(0.62 0.003 285 / 0.12);
     --shadow: rgba(0,0,0,.14);               --shadow: oklch(0 0 0 / 0.14);
     /* The six pens. Stored files hold the light hex; the renderer looks the colour
        up here at draw time, which is how a dark theme reaches inside the canvas. */
@@ -54,6 +56,8 @@
       --handle-fill: #1a1a1e;                  --handle-fill: oklch(0.21 0.005 285);
       --selection: #6fa8ff;                    --selection: oklch(0.74 0.15 258);
       --selection-tint: rgba(111,168,255,.30); --selection-tint: oklch(0.74 0.15 258 / 0.30);
+      --marquee: #6a6a72;                      --marquee: oklch(0.52 0.005 285);
+      --marquee-fill: rgba(190,190,200,.14);   --marquee-fill: oklch(0.80 0.004 285 / 0.14);
       --shadow: rgba(0,0,0,.5);                --shadow: oklch(0 0 0 / 0.5);
       --pen-ink: #ecebe7;                      --pen-ink: oklch(0.94 0.004 285);
       --pen-red: #ff8b7a;                      --pen-red: oklch(0.74 0.15 27);
@@ -264,6 +268,10 @@
   .list .doc-row .field { flex: 1 1 auto; min-width: 0; border-color: var(--rule); }
   .list .doc-row.editing .side { opacity: 1; pointer-events: auto; background: var(--chrome); }
   .empty { padding: 6px 8px; opacity: .55; }
+  /* Pointer capture keeps events on the canvas, but selection is document-wide: a
+     drag that crosses the toolbar still sweeps its labels in. This class is on for
+     the whole press and pairs with selectstart below. */
+  body.mc-dragging { user-select: none; }
 </style>
 
 <!-- The icons: the official Material Symbols Outlined glyphs, fetched from
@@ -711,9 +719,43 @@ function createMiniCanvas(canvasElement, options) {
 
   // --- rendering ------------------------------------------------------------
   let redrawQueued = false;
+  let viewQueued = false;
   let announcedEdits = 0;
+  let cameraMoving = false;
+  let cameraEndTimer = null;
+
+  const beginCameraMove = core.beginCameraMove = () => {
+    if (cameraMoving) return;
+    cameraMoving = true;
+  };
+
+  const endCameraMove = core.endCameraMove = () => {
+    if (!cameraMoving) return;
+    cameraMoving = false;
+    if (cameraEndTimer) { clearTimeout(cameraEndTimer); cameraEndTimer = null; }
+    core.fire('overlay');
+    core.requestRedraw();
+  };
+
+  const scheduleCameraEnd = core.scheduleCameraEnd = () => {
+    if (cameraEndTimer) clearTimeout(cameraEndTimer);
+    cameraEndTimer = setTimeout(() => { cameraEndTimer = null; endCameraMove(); }, 150);
+  };
+
+  // Pan and zoom repaint the canvas every tick; overlay repositioning waits until
+  // the camera stops — with many shapes selected, handles are the expensive part.
+  core.requestViewUpdate = () => {
+    if (cameraMoving || redrawQueued) {
+      if (!redrawQueued) core.requestRedraw();
+      return;
+    }
+    if (viewQueued) return;
+    viewQueued = true;
+    requestAnimationFrame(() => { viewQueued = false; if (!cameraMoving) core.requestRedraw(); });
+  };
 
   core.requestRedraw = () => {
+    viewQueued = false;
     if (redrawQueued) return;
     redrawQueued = true;
     requestAnimationFrame(() => { redrawQueued = false; redraw(); });
@@ -752,7 +794,7 @@ function createMiniCanvas(canvasElement, options) {
     context.translate(-core.scene.view.x, -core.scene.view.y);
 
     for (const item of core.scene.items) core.drawItem(item);
-    core.fire('overlay');
+    if (!cameraMoving) core.fire('overlay');
     core.fire('afterdraw');
     if (edits !== announcedEdits) { announcedEdits = edits; core.emit('change', core.api); }
   }
@@ -787,12 +829,31 @@ function createMiniCanvas(canvasElement, options) {
   core.lastScreenPoint = null;
   core.hoverPoint = null;
 
+  // A drag across the canvas would otherwise sweep toolbar labels and other page
+  // chrome into a browser selection. A body class for the press, selectstart, and
+  // preventDefault on pointerdown block that.
+  const syncSelectLock = () => {
+    document.body.classList.toggle('mc-dragging', activePointers.size > 0);
+  };
+
+  core.canvas.addEventListener('selectstart', (event) => {
+    event.preventDefault();
+  });
+
   core.canvas.addEventListener('pointerdown', (event) => {
     active = core;   // whichever canvas you last touched owns the keyboard
+
+    // Right click and ctrl/cmd-click are not selection gestures. Middle click
+    // still reaches pan below.
+    if (event.button !== 0 && event.button !== 1) return;
+    if (event.button === 0 && (event.ctrlKey || event.metaKey)) return;
+
     core.canvas.setPointerCapture(event.pointerId);
     const screenPoint = core.screenPointOf(event);
     activePointers.set(event.pointerId, screenPoint);
     core.lastScreenPoint = screenPoint;
+    syncSelectLock();   // body.mc-dragging — see syncSelectLock above
+    event.preventDefault();   // stops the browser from starting a sweep on press
 
     if (activePointers.size === 2) {   // second finger down: pinch, not draw
       core.fire('cancel');
@@ -807,6 +868,7 @@ function createMiniCanvas(canvasElement, options) {
   core.on('pointerdown', (event) => {
     if (core.tool !== 'pan' && !core.spaceHeld && event.button !== 1) return false;
     isPanning = true;
+    beginCameraMove();
     return true;
   }, 30);
 
@@ -821,12 +883,12 @@ function createMiniCanvas(canvasElement, options) {
     const screenPoint = core.hoverPoint;
     activePointers.set(event.pointerId, screenPoint);
 
-    if (activePointers.size >= 2) { pinch(); core.lastScreenPoint = screenPoint; return; }
+    if (activePointers.size >= 2) { beginCameraMove(); pinch(); core.lastScreenPoint = screenPoint; return; }
 
     if (isPanning) {
       core.scene.view.x -= (screenPoint.x - core.lastScreenPoint.x) / core.scene.view.scale;
       core.scene.view.y -= (screenPoint.y - core.lastScreenPoint.y) / core.scene.view.scale;
-      core.requestRedraw();
+      core.requestViewUpdate();
     } else {
       core.fire('pointermove', event, {
         screenPoint: screenPoint,
@@ -839,11 +901,14 @@ function createMiniCanvas(canvasElement, options) {
 
   function endPointer(event) {
     activePointers.delete(event.pointerId);
+    syncSelectLock();   // release body.mc-dragging once every finger is up
     if (activePointers.size < 2) lastPinch = null;
+    if (activePointers.size < 2 && cameraMoving && !isPanning) endCameraMove();
     if (activePointers.size === 0) {
       isPanning = false;
       core.fire('pointerup', event);
-      core.requestRedraw();
+      if (cameraMoving) endCameraMove();
+      else core.requestRedraw();
     }
   }
   // Direct, like the other canvas listeners: those live and die with the element,
@@ -862,20 +927,22 @@ function createMiniCanvas(canvasElement, options) {
       core.zoomAround(middle, Math.pow(distance / lastPinch.distance, core.zoomRate));
       core.scene.view.x -= (middle.x - lastPinch.middle.x) / core.scene.view.scale;
       core.scene.view.y -= (middle.y - lastPinch.middle.y) / core.scene.view.scale;
-      core.requestRedraw();
+      core.requestViewUpdate();
     }
     lastPinch = { distance: distance, middle: middle };
   }
 
   core.canvas.addEventListener('wheel', (event) => {
     event.preventDefault();
+    beginCameraMove();
     if (event.ctrlKey || event.metaKey) {          // trackpad pinch and ⌘-wheel
       core.zoomAround(core.screenPointOf(event), Math.exp(-event.deltaY / 200 * core.zoomRate));
     } else {
       core.scene.view.x += event.deltaX / core.scene.view.scale;
       core.scene.view.y += event.deltaY / core.scene.view.scale;
     }
-    core.requestRedraw();
+    core.requestViewUpdate();
+    scheduleCameraEnd();
   }, { passive: false });
 
   // --- keyboard -------------------------------------------------------------
@@ -954,6 +1021,8 @@ function createMiniCanvas(canvasElement, options) {
     core.scene = { format: 'minicanvas/1', view: { x: 0, y: 0, scale: 1 }, items: [], ...parsed };
     core.scene.view.scale = core.scene.view.scale || 1;
     edits = announcedEdits = 0;   // a fresh document has no unsaved edits
+    cameraMoving = false;
+    if (cameraEndTimer) { clearTimeout(cameraEndTimer); cameraEndTimer = null; }
     core.fire('load');
     warnAboutUnrenderable();
     core.requestRedraw();
@@ -969,6 +1038,7 @@ function createMiniCanvas(canvasElement, options) {
     on: (type, handler) => { core.canvas.addEventListener(type, handler); return core.api; },
     off: (type, handler) => { core.canvas.removeEventListener(type, handler); return core.api; },
     destroy: () => {
+      if (cameraEndTimer) clearTimeout(cameraEndTimer);
       cleanups.forEach((undo) => undo());
       cleanups.length = 0;
       const at = instances.indexOf(core);
@@ -1939,6 +2009,11 @@ createMiniCanvas.plugin('tool-image', ['item-image'], function (core) {
 createMiniCanvas.plugin('select', [], function (core) {
   const selection = core.selection = new Set();
   let marquee = null;            // world-space box while box-selecting
+  // What the marquee is currently over. Drawn as selected while the drag is live,
+  // but kept out of the selection until the button comes up: a box being dragged
+  // is a question, and answering it early means every plugin listening for a
+  // selection change hears one on every frame of the drag.
+  let marqueePreview = [];
   let isDragging = false;
   let dragRemembered = false;
   let announcedSelection = '';
@@ -2064,22 +2139,30 @@ createMiniCanvas.plugin('select', [], function (core) {
   // Everything the dragged rectangle touches. `box` goes to `within` too, not
   // just the point predicate: a shape with a hollow middle needs to reason about
   // where the marquee's edges are, not just which points it covers.
-  function selectWithin(marqueeBox) {
+  function itemsWithin(marqueeBox) {
     const box = normalised(marqueeBox);
     const right = box.x + box.w, bottom = box.y + box.h;
     const inside = (x, y) => x >= box.x && x <= right && y >= box.y && y <= bottom;
+    const found = new Set();
     for (const item of core.scene.items) {
       const type = core.types[item.type];
       if (type && type.within) {
-        if (type.within(item, inside, box)) selection.add(item);
+        if (type.within(item, inside, box)) found.add(item);
         continue;
       }
       const itemBox = core.boundsOf([item]);
       if (itemBox && itemBox.x <= right && itemBox.x + itemBox.w >= box.x
-                  && itemBox.y <= bottom && itemBox.y + itemBox.h >= box.y) selection.add(item);
+                  && itemBox.y <= bottom && itemBox.y + itemBox.h >= box.y) found.add(item);
     }
-    for (const item of [...selection]) for (const member of core.membersOf(item)) selection.add(member);
+    // Touching one of a group's members brings the whole group, so the preview
+    // promises exactly what letting go will take.
+    for (const item of [...found]) for (const member of core.membersOf(item)) found.add(member);
+    return [...found];
   }
+
+  const selectWithin = (marqueeBox) => {
+    for (const item of itemsWithin(marqueeBox)) selection.add(item);
+  };
 
   const deleteSelection = core.deleteSelection = () => {
     if (!selection.size) return;
@@ -2103,6 +2186,7 @@ createMiniCanvas.plugin('select', [], function (core) {
 
   core.on('pointerdown', (event, at) => {
     if (core.tool !== 'select') return false;
+    if (event.button !== 0 || event.ctrlKey || event.metaKey) return false;
     hovered = null;   // the click resolves it one way or the other
     // Resize and rotate get first refusal, but only over their own selection.
     if (core.handlesAnswer(at.world) && core.fire('handledown', event, at)) return true;
@@ -2124,6 +2208,7 @@ createMiniCanvas.plugin('select', [], function (core) {
     } else {
       if (!event.shiftKey) selection.clear();
       marquee = { x1: at.world.x, y1: at.world.y, x2: at.world.x, y2: at.world.y };
+      marqueePreview = [];
     }
     core.requestRedraw();
     return true;
@@ -2138,6 +2223,9 @@ createMiniCanvas.plugin('select', [], function (core) {
     if (marquee) {
       marquee.x2 = at.world.x;
       marquee.y2 = at.world.y;
+      // Recomputed against the whole scene each frame rather than accumulated, so
+      // dragging back over something takes it out again the same way it went in.
+      marqueePreview = itemsWithin(marquee).filter((item) => !selection.has(item));
       core.requestRedraw();
       return true;
     }
@@ -2153,14 +2241,19 @@ createMiniCanvas.plugin('select', [], function (core) {
       const minimum = 2 / core.scene.view.scale;
       if (box.w > minimum || box.h > minimum) selectWithin(marquee);
       marquee = null;
+      marqueePreview = [];
     }
     return false;
   });
 
-  core.on('toolleave', () => { selection.clear(); marquee = null; hovered = null; return false; });
-  core.on('load', () => { selection.clear(); hovered = null; return false; });
+  core.on('toolleave', () => {
+    selection.clear(); marquee = null; marqueePreview = []; hovered = null; return false;
+  });
+  core.on('load', () => { selection.clear(); marqueePreview = []; hovered = null; return false; });
   // The items that come back are freshly parsed objects, not the ones selected.
-  core.on('historystep', () => { selection.clear(); hovered = null; return false; });
+  core.on('historystep', () => {
+    selection.clear(); marqueePreview = []; hovered = null; return false;
+  });
 
   const NUDGES = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
 
@@ -2220,11 +2313,18 @@ createMiniCanvas.plugin('select', [], function (core) {
       }
     }
 
-    if (marquee) {                       // dashed, so an in-progress lasso reads
-      const box = normalised(marquee);   // differently from a settled selection
-      context.setLineDash([4 * unit, 4 * unit]);
+    if (marquee) {                       // solid grey: a region being swept, not
+      const box = normalised(marquee);   // a settled selection
+      context.fillStyle = core.cssColor('--marquee-fill', 'rgba(120,120,116,.12)');
+      context.fillRect(box.x, box.y, box.w, box.h);
+      context.strokeStyle = core.cssColor('--marquee', '#a8a8a4');
       context.strokeRect(box.x, box.y, box.w, box.h);
-      context.setLineDash([]);
+      // What letting go would take — blue like a settled selection, no handles.
+      context.strokeStyle = core.cssColor('--selection', '#1a73ff');
+      for (const item of marqueePreview) {
+        const own = core.frameOf([item]);
+        if (own) outline(own);
+      }
     }
     // Several loose items each get their own outline. A group gets one, because a
     // group is one thing until you take it apart.
@@ -2374,6 +2474,38 @@ createMiniCanvas.plugin('transform', ['select'], function (core) {
   const rotationHandle = (box) =>
     ({ x: box.x + box.w / 2, y: box.y - ROTATE_REACH / core.scene.view.scale });
 
+  // While a group or mixed selection turns, frameOf would re-fit an upright box every
+  // frame and the outline would breathe instead of spin. One boxed item already gets
+  // a turning frame from its own angle; everything else keeps the bounds from the
+  // press and applies the drag's degrees until the pointer comes up.
+  const baseSelectionFrame = core.selectionFrame;
+  core.selectionFrame = () => {
+    if (rotation && rotation.frame && !rotation.frame.angle) {
+      const lone = rotation.items.length === 1 && core.itemBox(rotation.items[0].item);
+      if (!lone) {
+        return {
+          box: rotation.frame.box, content: rotation.frame.content,
+          angle: rotation.degrees || 0, center: rotation.center
+        };
+      }
+    }
+    return baseSelectionFrame();
+  };
+
+  // A handle under the pointer wins over whatever shape is stacked beneath it. The
+  // select plugin's default only lets handles answer when nothing else is there.
+  const baseHandlesAnswer = core.handlesAnswer;
+  core.handlesAnswer = (world) => {
+    const frame = core.selectionFrame();
+    if (frame) {
+      const local = core.toFrame(world, frame);
+      const reach = core.HANDLE_SIZE / core.scene.view.scale;
+      const near = (point) => Math.abs(point.x - local.x) < reach && Math.abs(point.y - local.y) < reach;
+      if (near(rotationHandle(frame.box)) || handleAt(local, frame)) return true;
+    }
+    return baseHandlesAnswer(world);
+  };
+
   // Object.assign alone cannot remove a field the snapshot never had, so a drag
   // that adds one (an angle, say) would accumulate it frame after frame.
   function restoreOriginal(entry) {
@@ -2458,6 +2590,7 @@ createMiniCanvas.plugin('transform', ['select'], function (core) {
   }
 
   function startRotation(world) {
+    const frame = baseSelectionFrame();
     const box = core.boundsOf(core.selection);
     const center = { x: box.x + box.w / 2, y: box.y + box.h / 2 };
     const items = [...core.selection];
@@ -2469,6 +2602,8 @@ createMiniCanvas.plugin('transform', ['select'], function (core) {
       // boxed item knows its own angle; a stroke or a mixed selection does not, so
       // for those the snap is measured from where the drag started.
       base: (items.length === 1 && core.itemBox(items[0]) && items[0].angle) || 0,
+      frame: frame,
+      degrees: 0,
       items: snapshot()
     };
   }
@@ -2479,6 +2614,7 @@ createMiniCanvas.plugin('transform', ['select'], function (core) {
     // Snap the angle the item ends up at, not the amount it turned by. Something
     // sitting at 7° lands on 0° or 15°, which is what straightening means.
     if (snap) degrees = Math.round((rotation.base + degrees) / 15) * 15 - rotation.base;
+    rotation.degrees = degrees;
     for (const entry of rotation.items) {
       restoreOriginal(entry);
       rotateItem(entry.item, rotation.center, degrees);

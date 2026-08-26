@@ -282,6 +282,9 @@
        took the press would steal the one that starts a stroke. */
     pointer-events: none;
   }
+  /* While the camera moves, hint the compositor to keep the scene on its own
+     layer so pan and zoom are one texture move, not a walk of every item. */
+  .mc-host.mc-camera-moving .mc-layer { will-change: transform; }
   .mc-host.mc-picking .mc-layer { pointer-events: auto; }
   .mc-overlay { position: absolute; inset: 0; pointer-events: none; }
   /* The ruler measures text off-screen at scale 1, so a box knows its size before
@@ -853,10 +856,62 @@ function createMiniCanvas(hostElement, options) {
   // frame that changed one item leaves the other elements untouched and the
   // browser repaints what actually moved.
   let redrawQueued = false;
+  let viewQueued = false;
   let announcedEdits = 0;
   const elements = new Map();   // item -> element
+  let cameraMoving = false;
+  let cameraEndTimer = null;
+
+  function viewTransformOf(view) {
+    return 'scale(' + view.scale + ') translate(' + (-view.x) + 'px, ' + (-view.y) + 'px)';
+  }
+
+  // One style write on the scene layer. Called synchronously on every camera
+  // tick so pan and zoom never wait for the next frame.
+  function applyViewTransform() {
+    layer.style.transform = viewTransformOf(core.scene.view);
+  }
+
+  const beginCameraMove = core.beginCameraMove = () => {
+    if (cameraMoving) return;
+    cameraMoving = true;
+    core.host.classList.add('mc-camera-moving');
+  };
+
+  const endCameraMove = core.endCameraMove = () => {
+    if (!cameraMoving) return;
+    cameraMoving = false;
+    core.host.classList.remove('mc-camera-moving');
+    if (cameraEndTimer) { clearTimeout(cameraEndTimer); cameraEndTimer = null; }
+    core.fire('overlay');
+    // Grab bands scale with zoom; a full reconcile picks that up once the
+    // camera has settled rather than on every wheel or pinch tick.
+    core.requestRedraw();
+  };
+
+  const scheduleCameraEnd = core.scheduleCameraEnd = () => {
+    if (cameraEndTimer) clearTimeout(cameraEndTimer);
+    cameraEndTimer = setTimeout(() => { cameraEndTimer = null; endCameraMove(); }, 150);
+  };
+
+  // Pan and zoom only move the layer transform; the item list is unchanged.
+  // Overlay repositioning waits until the camera stops — with many shapes
+  // selected, handles are the expensive part of a view tick, not the transform.
+  function applyView() {
+    applyViewTransform();
+    if (!cameraMoving) core.fire('overlay');
+  }
+
+  core.requestViewUpdate = () => {
+    applyViewTransform();
+    if (cameraMoving || redrawQueued) return;
+    if (viewQueued) return;
+    viewQueued = true;
+    requestAnimationFrame(() => { viewQueued = false; if (!cameraMoving) core.fire('overlay'); });
+  };
 
   core.requestRedraw = () => {
+    viewQueued = false;
     if (redrawQueued) return;
     redrawQueued = true;
     requestAnimationFrame(() => { redrawQueued = false; redraw(); });
@@ -909,11 +964,7 @@ function createMiniCanvas(hostElement, options) {
   core.elementOf = (item) => { core.drawItem(item); return elements.get(item) || null; };
 
   function redraw() {
-    const view = core.scene.view;
-    // One transform for the whole scene. Translate inside scale, so the numbers
-    // stay in world units and the item styles never mention the view.
-    layer.style.transform = 'scale(' + view.scale + ') translate('
-      + (-view.x) + 'px, ' + (-view.y) + 'px)';
+    applyView();
 
     const live = new Set();
     core.scene.items.forEach((item, index) => {
@@ -932,7 +983,6 @@ function createMiniCanvas(hostElement, options) {
       elements.delete(item);
     }
 
-    core.fire('overlay');
     core.fire('afterdraw');
     if (edits !== announcedEdits) { announcedEdits = edits; core.emit('change', core.api); }
   }
@@ -1021,6 +1071,7 @@ function createMiniCanvas(hostElement, options) {
   core.on('pointerdown', (event) => {
     if (core.tool !== 'pan' && !core.spaceHeld && event.button !== 1) return false;
     isPanning = true;
+    beginCameraMove();
     return true;
   }, 30);
 
@@ -1035,12 +1086,12 @@ function createMiniCanvas(hostElement, options) {
     const screenPoint = core.hoverPoint;
     activePointers.set(event.pointerId, screenPoint);
 
-    if (activePointers.size >= 2) { pinch(); core.lastScreenPoint = screenPoint; return; }
+    if (activePointers.size >= 2) { beginCameraMove(); pinch(); core.lastScreenPoint = screenPoint; return; }
 
     if (isPanning) {
       core.scene.view.x -= (screenPoint.x - core.lastScreenPoint.x) / core.scene.view.scale;
       core.scene.view.y -= (screenPoint.y - core.lastScreenPoint.y) / core.scene.view.scale;
-      core.requestRedraw();
+      core.requestViewUpdate();
     } else {
       core.fire('pointermove', event, {
         screenPoint: screenPoint,
@@ -1055,10 +1106,12 @@ function createMiniCanvas(hostElement, options) {
     activePointers.delete(event.pointerId);
     syncSelectLock();   // release body.mc-dragging once every finger is up
     if (activePointers.size < 2) lastPinch = null;
+    if (activePointers.size < 2 && cameraMoving && !isPanning) endCameraMove();
     if (activePointers.size === 0) {
       isPanning = false;
       core.fire('pointerup', event);
-      core.requestRedraw();
+      if (cameraMoving) endCameraMove();
+      else core.requestRedraw();
     }
   }
   // Direct, like the other host listeners: those live and die with the element,
@@ -1077,20 +1130,22 @@ function createMiniCanvas(hostElement, options) {
       core.zoomAround(middle, Math.pow(distance / lastPinch.distance, core.zoomRate));
       core.scene.view.x -= (middle.x - lastPinch.middle.x) / core.scene.view.scale;
       core.scene.view.y -= (middle.y - lastPinch.middle.y) / core.scene.view.scale;
-      core.requestRedraw();
+      core.requestViewUpdate();
     }
     lastPinch = { distance: distance, middle: middle };
   }
 
   core.host.addEventListener('wheel', (event) => {
     event.preventDefault();
+    beginCameraMove();
     if (event.ctrlKey || event.metaKey) {          // trackpad pinch and ⌘-wheel
       core.zoomAround(core.screenPointOf(event), Math.exp(-event.deltaY / 200 * core.zoomRate));
     } else {
       core.scene.view.x += event.deltaX / core.scene.view.scale;
       core.scene.view.y += event.deltaY / core.scene.view.scale;
     }
-    core.requestRedraw();
+    core.requestViewUpdate();
+    scheduleCameraEnd();
   }, { passive: false });
 
   // --- keyboard -------------------------------------------------------------
@@ -1169,6 +1224,8 @@ function createMiniCanvas(hostElement, options) {
     core.scene = { format: 'minicanvas/1', view: { x: 0, y: 0, scale: 1 }, items: [], ...parsed };
     core.scene.view.scale = core.scene.view.scale || 1;
     edits = announcedEdits = 0;   // a fresh document has no unsaved edits
+    cameraMoving = false;
+    core.host.classList.remove('mc-camera-moving');
     // The old scene's elements belong to items nobody holds any more.
     for (const [, element] of elements) element.remove();
     elements.clear();
@@ -1187,6 +1244,7 @@ function createMiniCanvas(hostElement, options) {
     on: (type, handler) => { core.host.addEventListener(type, handler); return core.api; },
     off: (type, handler) => { core.host.removeEventListener(type, handler); return core.api; },
     destroy: () => {
+      if (cameraEndTimer) clearTimeout(cameraEndTimer);
       cleanups.forEach((undo) => undo());
       cleanups.length = 0;
       layer.remove();
