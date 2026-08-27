@@ -224,6 +224,11 @@
     max-height: min(52vh, 380px); overflow-y: auto;
   }
   .list:empty { display: none; }
+  /* A scrolling flex column will shrink its children to fit before it will scroll,
+     which with enough results squeezes every row to nothing and slides the two
+     lines of one over each other. Nothing in a list shrinks: the box scrolls
+     instead, which is what the box is for. */
+  .list > *, .list .pick > * { flex: 0 0 auto; }
   /* Two classes deep on purpose: the square-icon-button rule is `button:has(> .icon)`,
      which outweighs a single class and would pin these rows to 30 pixels wide.
      `.doc-row` rather than `.row` for the same reason in reverse: the scene panel
@@ -243,7 +248,17 @@
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
   .list .pick mark { background: var(--selection-tint); color: inherit; border-radius: 2px; }
-  .list .pick.new { opacity: .55; }
+  /* The row that makes another one, with its key beside it: the key and the row do
+     the same thing, so they are shown as the one offer. Sideways rather than
+     stacked, since a shortcut is not a subtitle. It carries a little air above it
+     and a tint of its own, because it is the one row in the list that is not a
+     place to go, and a list of ten things ending in a faded eleventh loses it. */
+  .list .pick.new {
+    flex-direction: row; align-items: center; gap: 6px;
+    margin-top: 5px; background: var(--chrome); border-color: var(--rule);
+  }
+  .list .pick.new[aria-selected="true"], .list .pick.new:hover { background: var(--rule); }
+  .list .pick .key { font-size: 11px; opacity: .6; }
 
   /* A row carries controls of its own, so the row is a div and the name inside it
      is the button: a button inside a button is not a thing. Rename and delete hang
@@ -263,11 +278,55 @@
   .list .side:hover, .list .side:focus-visible { background: var(--rule); }
   .list .side .icon { width: 16px; height: 16px; }
   /* Naming something: the field takes the row and the check mark sits on the end,
-     out in the open rather than on hover, because it is the way out of the state. */
+     out in the open rather than on hover, because it is the way out of the state.
+     The field is built to the same box as the name it replaces — 12px of padding
+     and its own border, not the 30px the filter fields use — or every row below
+     it hops two pixels the moment the pencil is pressed. */
   .list .doc-row.editing { gap: 4px; }
-  .list .doc-row .field { flex: 1 1 auto; min-width: 0; border-color: var(--rule); }
+  .list .doc-row .field {
+    flex: 1 1 auto; min-width: 0; height: auto; min-height: 30px;
+    padding: 6px 8px; border-color: var(--rule);
+  }
   .list .doc-row.editing .side { opacity: 1; pointer-events: auto; background: var(--chrome); }
   .empty { padding: 6px 8px; opacity: .55; }
+
+  /* --- pinned views --------------------------------------------------------
+     A rail of dashes down the left edge, one per pinned view, and the list
+     hanging off it on hover. The dashes say how many places you kept without
+     taking a panel's worth of room to do it, and the rail and the list touch,
+     so the pointer crosses from one to the other without a gap to fall into. */
+  #pins {
+    position: fixed; left: 0; top: 50%; transform: translateY(-50%); z-index: 4;
+    display: flex; align-items: center; pointer-events: none;
+    transition: opacity .15s ease;
+  }
+  #pins > * { pointer-events: auto; }
+  #pins.away { opacity: 0; pointer-events: none; }
+  #pin-rail {
+    flex-direction: column; align-items: flex-start; gap: 4px;
+    width: auto; height: auto; padding: 12px 10px;
+  }
+  #pin-rail:hover { background: transparent; }
+  .dash {
+    display: block; width: 15px; height: 3px; border-radius: 2px;
+    background: var(--ink); opacity: .3; transition: opacity .15s ease;
+  }
+  #pin-rail:hover .dash, #pins.open .dash { opacity: .55; }
+  /* Nothing pinned yet still draws one, fainter: it is all that says the feature
+     is here, and P is not a key anybody guesses. */
+  .dash.none { opacity: .14; }
+  #pin-panel {
+    width: min(360px, calc(100vw - 60px)); padding: 6px;
+    background: var(--surface); border: 1px solid var(--rule); border-radius: 10px;
+    box-shadow: 0 6px 24px var(--shadow);
+  }
+  #pin-panel[hidden] { display: none; }
+  .panel-title { font-size: 11px; opacity: .55; padding: 1px 4px 6px; }
+  /* A view pinned a moment ago, so the row that just appeared is the one you
+     look at. The tint fades on its own and the next repaint drops the class. */
+  @keyframes pin-fresh { from { background: var(--selection-tint); } to { background: transparent; } }
+  .list .pick.fresh { animation: pin-fresh 1.4s ease-out; }
+
   /* Pointer capture keeps events on the canvas, but selection is document-wide: a
      drag that crosses the toolbar still sweeps its labels in. This class is on for
      the whole press and pairs with selectstart below. */
@@ -410,10 +469,21 @@
   <div id="doc-list" class="list"></div>
 </div>
 
+<!-- Places on the canvas worth coming back to. The dashes are the whole of it
+     until you point at them: one per pinned view, down the left edge. -->
+<div id="pins">
+  <button id="pin-rail" aria-expanded="false" aria-label="Pinned views"></button>
+  <div id="pin-panel" hidden>
+    <div class="panel-title">Pinned views</div>
+    <input id="pin-filter" class="field" type="text" placeholder="Find a view" aria-label="Find a pinned view" spellcheck="false">
+    <div id="pin-list" class="list"></div>
+  </div>
+</div>
+
 <!-- Search, top right. The button goes away with the toolbar; ⌘space and ⌘K open
      the panel either way, since a shortcut is the only way in once the chrome is
      hidden and a shortcut nobody can reach is no way in at all. -->
-<button id="search-button" class="top-chrome" title="Search · ⌘K" aria-label="Search"><svg class="icon" aria-hidden="true"><use href="#i-search"></use></svg></button>
+<button id="search-button" class="top-chrome" data-tip="Jump to documents, pinned views, or text nodes · ⌘K" aria-label="Search"><svg class="icon" aria-hidden="true"><use href="#i-search"></use></svg></button>
 
 <div id="search-panel" hidden>
   <input id="search-field" class="field" type="text" placeholder="Search every document" aria-label="Search every document" spellcheck="false">
@@ -3167,9 +3237,18 @@ createMiniCanvas.plugin('export', [], function (core) {
   // drawn on it since is what opens.
   const sceneBlock = document.getElementById('scene');
   const shared = sceneBlock.getAttribute('data-document');
+  // Pinned views belong to the document rather than to the scene, so an exported
+  // page carries them beside it. A copy that lands somewhere else opens on the
+  // same places its author kept.
+  const sharedViews = () => {
+    try {
+      const list = JSON.parse(sceneBlock.getAttribute('data-views') || '[]');
+      return Array.isArray(list) ? list.filter((view) => view && view.name && typeof view.scale === 'number') : [];
+    } catch (error) { return []; }   // whatever that attribute is, it is not ours
+  };
   if (shared && !docs.list.some((doc) => doc.id === shared)) {
     if (startedEmpty) docs.list.length = 0;   // nothing was in it and nothing put it there
-    docs.list.push({ id: shared, name: sceneBlock.getAttribute('data-name') || null, used: Date.now() });
+    docs.list.push({ id: shared, name: sceneBlock.getAttribute('data-name') || null, used: Date.now(), views: sharedViews() });
     write(docKey(shared), sceneBlock.textContent.trim());
     docs.current = shared;
   }
@@ -3315,10 +3394,14 @@ createMiniCanvas.plugin('export', [], function (core) {
     const at = (selector) => page.querySelector(selector);
     // Whatever the chrome happened to be doing when the button was pressed is not
     // part of the document, so it all goes back the way the source file has it.
-    ['#doc-panel', '#search-panel', '#scene-panel', '#download-menu']
+    ['#doc-panel', '#search-panel', '#scene-panel', '#download-menu', '#pin-panel']
       .forEach((selector) => at(selector).setAttribute('hidden', ''));
     at('#doc-list').textContent = '';
     at('#search-list').textContent = '';
+    at('#pin-list').textContent = '';
+    at('#pin-rail').textContent = '';        // the dashes are drawn from the index, not the markup
+    at('#pin-rail').setAttribute('aria-expanded', 'false');
+    at('#pins').classList.remove('away', 'open');
     at('#doc-button').removeAttribute('hidden');
     at('#doc-button').setAttribute('aria-expanded', 'false');
     at('#download').setAttribute('aria-expanded', 'false');
@@ -3343,6 +3426,10 @@ createMiniCanvas.plugin('export', [], function (core) {
     block.textContent = '\n  ' + board.toText().replace(/<\//g, '<\\/') + '\n';
     block.setAttribute('data-document', currentId);
     block.setAttribute('data-name', name);
+    // The places the author kept travel with the page they were kept in.
+    const kept = viewsOf(docById(currentId));
+    if (kept.length) block.setAttribute('data-views', JSON.stringify(kept));
+    else block.removeAttribute('data-views');
     return '<!doctype html>\n' + page.outerHTML + '\n';
   }
 
@@ -3465,9 +3552,13 @@ createMiniCanvas.plugin('export', [], function (core) {
     const box = anchor.getBoundingClientRect();
     element.hidden = false;
     const width = element.offsetWidth || 0;
+    const height = element.offsetHeight || 0;
     element.style.left = Math.round(Math.max(8, Math.min(window.innerWidth - width - 8,
       box.left + box.width / 2 - width / 2))) + 'px';
-    element.style.top = Math.round(box.top - (element.offsetHeight || 0) - 8) + 'px';
+    // Above by default, below when there is no room for it there. The toolbar has
+    // the whole window over it; the chrome in the top corners has eight pixels.
+    const above = box.top - height - 8;
+    element.style.top = Math.round(above < 8 ? box.bottom + 8 : above) + 'px';
   }
   function showTip(target) {
     if (!target || !target.dataset || !target.dataset.tip) { tip.classList.remove('here'); return; }
@@ -3516,6 +3607,7 @@ createMiniCanvas.plugin('export', [], function (core) {
     catch (error) { board.load(EMPTY); }   // a corrupt key is an empty page, not a dead one
     lastSaved = board.toText();
     paintDocName();
+    paintPins();     // the dashes belong to the document, so they change with it
     dump();
   }
 
@@ -3561,12 +3653,13 @@ createMiniCanvas.plugin('export', [], function (core) {
   // row becomes a field and a check mark, and Enter does what the check mark does.
   // A name is the whole point of the state, so an empty one is not a way out of it:
   // the check mark hands focus back rather than saving nothing.
-  function editName(row, value, commit, cancel) {
+  function editName(row, value, commit, cancel, options) {
+    const settings = options || {};   // which field to hand focus back to, and what to call the thing
     row.textContent = '';
     row.className = 'doc-row editing';
     const field = document.createElement('input');
     field.className = 'field';
-    field.placeholder = 'Document name';
+    field.placeholder = settings.placeholder || 'Document name';
     field.spellcheck = false;
     field.value = value;
     let over = false;
@@ -3576,7 +3669,7 @@ createMiniCanvas.plugin('export', [], function (core) {
       if (keep && !name) { field.focus(); return; }
       over = true;
       if (keep) commit(name); else cancel();
-      docFilter.focus();
+      (settings.back || docFilter).focus();
     };
     const done = sideButton('check', 'Save name', () => finish(true));
     // Pressing the check mark must not take focus off the field, or the blur below
@@ -3649,13 +3742,166 @@ createMiniCanvas.plugin('export', [], function (core) {
       row.appendChild(sides);
       docList.appendChild(row);
     }
+    docList.appendChild(addRow('+ New document', 'N', startNewDoc));
+    docNav.reset();
+  }
+
+  // The row that makes another one. The key beside it does the same thing, which
+  // is the only reason it is written there.
+  function addRow(text, key, action) {
     const add = document.createElement('button');
     add.className = 'pick new';
     add.dataset.pick = '';
-    add.textContent = '+ New document';
-    add.onclick = startNewDoc;
-    docList.appendChild(add);
-    docNav.reset();
+    const label = document.createElement('span');
+    label.className = 'label';
+    label.textContent = text;
+    const cap = document.createElement('span');
+    cap.className = 'key';
+    cap.textContent = '· ' + key;   // the same dot the tooltips put before a shortcut
+    add.appendChild(label);
+    add.appendChild(cap);
+    add.onclick = action;
+    return add;
+  }
+
+  // --- pinned views ---------------------------------------------------------
+  // A pinned view is a place rather than a thing: where the camera was and how
+  // far in. It lives in the index beside the document's name rather than in the
+  // scene, for the same reason names do — drawing the rail costs one small read,
+  // and nothing about the file format has to change to hold a bookmark.
+  const pins = document.getElementById('pins');
+  const pinRail = document.getElementById('pin-rail');
+  const pinPanel = document.getElementById('pin-panel');
+  const pinFilter = document.getElementById('pin-filter');
+  const pinList = document.getElementById('pin-list');
+
+  // ponytail: twelve dashes and no more. The rail says roughly how many places
+  // you kept, and past a dozen it is the list that answers rather than the count.
+  const RAIL_MAX = 12;
+  const viewsOf = (doc) => (doc && Array.isArray(doc.views)) ? doc.views : [];
+  const round = (value, places) => Math.round(value * Math.pow(10, places)) / Math.pow(10, places);
+  let justPinned = null;
+
+  // Stored as the world point in the middle of the window rather than the corner
+  // the format keeps, so a view pinned on a laptop opens on the same thing on a
+  // monitor. The corner is worked back out on the way in.
+  function cameraNow() {
+    const view = board.scene().view;
+    const canvas = board.core.canvas;
+    return {
+      x: round(view.x + canvas.clientWidth / 2 / view.scale, 2),
+      y: round(view.y + canvas.clientHeight / 2 / view.scale, 2),
+      scale: round(view.scale, 4)
+    };
+  }
+
+  const inView = (item) => {
+    const view = board.scene().view;
+    const canvas = board.core.canvas;
+    const box = board.core.boundsOf([item]);
+    return box
+      && box.x < view.x + canvas.clientWidth / view.scale && box.x + box.w > view.x
+      && box.y < view.y + canvas.clientHeight / view.scale && box.y + box.h > view.y;
+  };
+
+  // What to call it. A view is named after the highest text in it, the way a
+  // document is named after its own first line: the top of what you were looking
+  // at is the heading of it. Selected text answers first if there is any, since
+  // picking something out is a plainer way of saying which words those are.
+  function viewName() {
+    const text = board.scene().items.filter((item) =>
+      item.type === 'text' && String(item.text || '').trim());
+    const picked = text.filter((item) => board.selection().indexOf(item) >= 0);
+    const pool = (picked.length ? picked : text.filter(inView)).map((item) =>
+      ({ item: item, box: board.core.boundsOf([item]) })).filter((entry) => entry.box);
+    pool.sort((a, b) => (a.box.y - b.box.y) || (a.box.x - b.box.x));
+    const line = pool.length && String(pool[0].item.text).split('\n').find((part) => part.trim());
+    return line ? line.trim().slice(0, 40) : 'View ' + (viewsOf(docById(currentId)).length + 1);
+  }
+
+  function pinView() {
+    const doc = docById(currentId);
+    if (!doc) return null;
+    const pin = Object.assign({ id: freshId(), name: viewName() }, cameraNow());
+    (doc.views || (doc.views = [])).push(pin);
+    saveDocs();
+    stale = true;               // the search knows about pinned views too
+    justPinned = pin.id;
+    paintPins();
+    return pin;
+  }
+
+  function dropView(doc, view) {
+    doc.views = viewsOf(doc).filter((entry) => entry.id !== view.id);
+    saveDocs();
+    stale = true;
+    paintPins();
+  }
+
+  function startRenameView(doc, view, row) {
+    editName(row, view.name, (name) => {
+      view.name = name;
+      saveDocs();
+      stale = true;
+      paintPins();
+    }, paintPins, { back: pinFilter, placeholder: 'View name' });
+  }
+
+  // Takes you there and selects nothing. A pinned view is a place, and arriving
+  // somewhere is not the same as picking up what you find.
+  function goToView(view, docId) {
+    if (docId && docId !== currentId) openDoc(docId);
+    const camera = board.scene().view;
+    camera.scale = view.scale || 1;
+    camera.x = view.x - board.core.canvas.clientWidth / 2 / camera.scale;
+    camera.y = view.y - board.core.canvas.clientHeight / 2 / camera.scale;
+    if (board.core.selection) board.core.selection.clear();
+    board.redraw();
+    save();                     // the camera is part of the scene, and nothing else will
+  }
+
+  function paintRail() {
+    const views = viewsOf(docById(currentId));
+    pinRail.textContent = '';
+    for (let at = 0; at < Math.max(1, Math.min(views.length, RAIL_MAX)); at++) {
+      const dash = document.createElement('span');
+      dash.className = views.length ? 'dash' : 'dash none';
+      pinRail.appendChild(dash);
+    }
+    pinRail.setAttribute('aria-label', views.length
+      ? views.length + (views.length === 1 ? ' pinned view' : ' pinned views')
+      : 'Pinned views');
+  }
+
+  function paintPins() {
+    paintRail();
+    const doc = docById(currentId);
+    const filter = pinFilter.value.trim().toLowerCase();
+    pinList.textContent = '';
+    for (const view of viewsOf(doc)) {
+      if (filter && view.name.toLowerCase().indexOf(filter) < 0) continue;
+      const row = document.createElement('div');
+      row.className = 'doc-row';
+      const pick = document.createElement('button');
+      pick.className = view.id === justPinned ? 'pick fresh' : 'pick';
+      pick.dataset.pick = '';
+      const label = document.createElement('span');
+      label.className = 'label';
+      label.textContent = view.name;
+      pick.appendChild(label);
+      pick.onclick = () => { showPins(false); goToView(view, currentId); };
+      row.appendChild(pick);
+      const sides = document.createElement('span');
+      sides.className = 'sides';
+      sides.appendChild(sideButton('edit', 'Rename', () => startRenameView(doc, view, row)));
+      // No confirmation on the way out: a view is a bookmark, and pinning another
+      // one is the same keystroke that made this one.
+      sides.appendChild(sideButton('close', 'Delete', () => dropView(doc, view)));
+      row.appendChild(sides);
+      pinList.appendChild(row);
+    }
+    pinList.appendChild(addRow('+ Pin current view', 'P', () => { pinView(); linger(2000); }));
+    pinNav.reset();
   }
 
   // --- search ---------------------------------------------------------------
@@ -3716,6 +3962,10 @@ createMiniCanvas.plugin('export', [], function (core) {
         if (item.type !== 'text' || !item.text) return;
         addEntry({ docId: doc.id, title: title, text: String(item.text), kind: 'text', at: at });
       });
+      // Somewhere you kept is as findable as something you wrote.
+      for (const view of viewsOf(doc)) {
+        addEntry({ docId: doc.id, title: title, text: view.name, kind: 'view', view: view });
+      }
     }
     stale = false;
   }
@@ -3748,7 +3998,9 @@ createMiniCanvas.plugin('export', [], function (core) {
     const hits = [];
     for (const id of pool) {
       const entry = entries[id];
-      let score = entry.kind === 'name' ? 40 : 0;   // a document is more than a line in one
+      // A document is more than a line in one, and a place somebody kept on
+      // purpose is more than a line they happened to write.
+      let score = entry.kind === 'name' ? 40 : entry.kind === 'view' ? 20 : 0;
       let matched = true;
       for (const token of tokens) {
         const at = entry.low.indexOf(token);        // the trie narrows; this decides
@@ -3822,18 +4074,29 @@ createMiniCanvas.plugin('export', [], function (core) {
     showSearch(false);
     if (entry.docId !== currentId) openDoc(entry.docId);
     if (entry.kind === 'text') focusItem(entry.at);
+    if (entry.kind === 'view') goToView(entry.view, entry.docId);
+  }
+
+  // An empty box is not an empty answer. Every pinned view in every document is
+  // the list of places worth going, which is the question a search box open on
+  // nothing is really asking.
+  function allPinned() {
+    if (stale) buildIndex();
+    const when = (entry) => { const doc = docById(entry.docId); return (doc && doc.used) || 0; };
+    return entries.filter((entry) => entry.kind === 'view').sort((a, b) => when(b) - when(a));
   }
 
   function paintResults() {
     const tokens = searchField.value.toLowerCase().split(/\s+/).filter(Boolean);
     searchList.textContent = '';
-    if (!tokens.length) { searchNav.reset(); return; }
-    const found = search(searchField.value);
+    const found = tokens.length ? search(searchField.value) : allPinned();
     if (!found.length) {
-      const nothing = document.createElement('div');
-      nothing.className = 'empty';
-      nothing.textContent = 'No matches';
-      searchList.appendChild(nothing);
+      if (tokens.length) {
+        const nothing = document.createElement('div');
+        nothing.className = 'empty';
+        nothing.textContent = 'No matches';
+        searchList.appendChild(nothing);
+      }
       searchNav.reset();
       return;
     }
@@ -3846,7 +4109,9 @@ createMiniCanvas.plugin('export', [], function (core) {
       paintMatch(label, snippet(entry.text, tokens), tokens);
       const where = document.createElement('span');
       where.className = 'where';
-      where.textContent = entry.kind === 'name' ? 'document' : entry.title;
+      where.textContent = entry.kind === 'name' ? 'document'
+        : entry.kind === 'view' ? 'pinned view · ' + entry.title
+        : entry.title;
       pick.appendChild(label);
       pick.appendChild(where);
       pick.onclick = () => go(entry);
@@ -3862,6 +4127,7 @@ createMiniCanvas.plugin('export', [], function (core) {
     docButton.setAttribute('aria-expanded', String(showing));
     if (!showing) return;
     showSearch(false);
+    showPins(false);
     docFilter.value = '';
     paintDocs();
     docFilter.focus();
@@ -3871,10 +4137,42 @@ createMiniCanvas.plugin('export', [], function (core) {
     searchPanel.hidden = !showing;
     if (!showing) return;
     showDocs(false);
+    showPins(false);
     if (stale) buildIndex();
     paintResults();
     searchField.focus();
     searchField.select();
+  }
+
+  // The list hangs off the rail on hover, so it opens and closes without ever
+  // being clicked. Focus goes to the field for the same reason it does in the
+  // other two panels — arrows and Enter are how you get somewhere from a list —
+  // and has to be handed back on the way out, or a panel nobody can see any more
+  // would still be taking the keystrokes.
+  let pinTimer = 0;
+  let pinOver = false;
+  function showPins(showing) {
+    if (showing && pins.classList.contains('away')) return;   // hidden chrome opens nothing
+    pinPanel.hidden = !showing;
+    pins.classList.toggle('open', showing);
+    pinRail.setAttribute('aria-expanded', String(showing));
+    if (!showing) {
+      justPinned = null;
+      if (pinPanel.contains(document.activeElement)) document.activeElement.blur();
+      return;
+    }
+    showDocs(false);
+    showSearch(false);
+    pinFilter.value = '';
+    paintPins();
+    pinFilter.focus();
+  }
+
+  // A pointer that has left goes on a short fuse rather than closing on the spot,
+  // since the way from the rail to the list is a few pixels of nothing.
+  function linger(ms) {
+    clearTimeout(pinTimer);
+    pinTimer = setTimeout(() => { if (!pinOver) showPins(false); }, ms);
   }
 
   // Both panels are a field, a list, arrows and Enter. One helper, so the two
@@ -3901,11 +4199,32 @@ createMiniCanvas.plugin('export', [], function (core) {
   }
   const docNav = navigable(docFilter, docList, () => showDocs(false));
   const searchNav = navigable(searchField, searchList, () => showSearch(false));
+  const pinNav = navigable(pinFilter, pinList, () => showPins(false));
 
   docButton.onclick = () => showDocs(true);
   searchButton.onclick = () => showSearch(searchPanel.hidden);
   docFilter.oninput = paintDocs;
   searchField.oninput = paintResults;
+  pinFilter.oninput = paintPins;
+
+  // Hovering the rail opens the list. Not while a button is held, though: a stroke
+  // drawn from the left edge of the window drags the pointer straight across it,
+  // and a panel that opened mid-drag would be a panel nobody asked for.
+  pinRail.addEventListener('pointerenter', (event) => {
+    if (event.buttons || document.body.classList.contains('mc-dragging')) return;
+    showPins(true);
+  });
+  // Tapping does what hovering does, for a finger, which has no hover to give. It
+  // only ever opens: a tap raises pointerenter first, so a toggle here would close
+  // the list its own touch had just opened. Tapping elsewhere puts it away.
+  pinRail.onclick = () => showPins(true);
+  for (const part of [pinRail, pinPanel]) {
+    part.addEventListener('pointerenter', () => { pinOver = true; clearTimeout(pinTimer); });
+    part.addEventListener('pointerleave', () => { pinOver = false; linger(180); });
+  }
+  // Typing in the list is a reason to keep it: the fuse lit by P is for a panel
+  // nobody went to, not for one being filtered or a name being changed.
+  pinPanel.addEventListener('keydown', () => clearTimeout(pinTimer));
 
   // ⌘space and ⌘K both open the search, hidden toolbar or not. Caught in the
   // capture phase because the canvas reads Space as a pan and would take the
@@ -3925,6 +4244,7 @@ createMiniCanvas.plugin('export', [], function (core) {
     if (event.key !== 'Escape') return;
     showDocs(false);
     showSearch(false);
+    showPins(false);
   });
 
   // A press anywhere else puts them away, the same as the download menu.
@@ -3933,9 +4253,34 @@ createMiniCanvas.plugin('export', [], function (core) {
     if (!target || !target.closest) return;
     if (!target.closest('#doc-panel, #doc-button')) showDocs(false);
     if (!target.closest('#search-panel, #search-button')) showSearch(false);
+    if (!target.closest('#pins')) showPins(false);
+  });
+
+  // P pins where you are, N starts a document. Two plain letters, so they need the
+  // guards every plain letter needs: not while a field has the keyboard, and not
+  // while the canvas is taking text — the text tool preventDefaults whatever it
+  // swallowed, which is how the page knows without asking it.
+  window.addEventListener('keydown', (event) => {
+    if (event.ctrlKey || event.metaKey || event.altKey || event.defaultPrevented) return;
+    const tag = event.target && event.target.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+    if (!board.core.isActive()) return;
+    const key = (event.key || '').toLowerCase();
+    if (key === 'p') {
+      // Pinning is a keystroke with nothing on screen to show for it, so the list
+      // opens long enough to read the name it chose and rename it. With the chrome
+      // hidden it still pins; there is just nothing to show you.
+      if (pinView()) { showPins(true); linger(2000); }
+      event.preventDefault();
+    } else if (key === 'n') {
+      showDocs(true);
+      startNewDoc();
+      event.preventDefault();
+    }
   });
 
   paintDocName();
+  paintPins();
 
   // ⌘. gets the chrome out of the way. The bar and the pill that brings it back
   // are the same toggle, so there is only one piece of state to be wrong about.
@@ -3948,7 +4293,8 @@ createMiniCanvas.plugin('export', [], function (core) {
     // it. The search panel itself is not: ⌘space still opens it from a bare page.
     docButton.classList.toggle('away', !showing);
     searchButton.classList.toggle('away', !showing);
-    if (!showing) { showDocs(false); showSearch(false); }
+    pins.classList.toggle('away', !showing);
+    if (!showing) { showDocs(false); showSearch(false); showPins(false); }
   };
   const hideButton = document.getElementById('hide');
   hideButton.onclick = () => showToolbar(false);

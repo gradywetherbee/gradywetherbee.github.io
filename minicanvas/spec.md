@@ -307,6 +307,8 @@ concern and always works whether or not any tool plugin is loaded.
 | `f` | Toggle fill. With shapes selected it fills or unfills them; with nothing selected it arms the pen for what you draw next. |
 | `g` | Cycle opacity: 70%, 50%, 30%, 10%, and back to opaque. Applies to every selected item, whatever its type. |
 | `c` | Step to the next of the six pens. With something selected it follows that item's colour, so the cycle picks up where what you are looking at already sits. |
+| `p` | Pin the current view. Names itself after the highest selected text item, or after the highest text on screen when nothing is selected. |
+| `n` | Start a new document: the switcher opens with the name field where the row will be. |
 | `shift` (hold) | While drawing a rect or oval, constrain to a square. While dragging a corner handle, keep the aspect ratio; an edge drag is one axis by definition, so shift has nothing to hold. While dragging the rotation handle, snap to 15°. While clicking with select, add or remove one item. While nudging, move 10 units instead of 1. With `[` or `]`, move one layer instead of all the way. |
 | arrows | Nudge the selection 1 unit, or 10 with shift. One undo step per key press, not per repeat. |
 | arrows, while typing | Move the caret. Shift extends a selected run, Home and End jump to the ends, and a plain arrow with a run selected collapses to its edge. |
@@ -622,8 +624,8 @@ frame first, so the hit region turns with what you see.
   turn into a blob. Pass the selection to export just that, or nothing for the whole
   scene. It fits the content with 8 units of padding and defaults to 2x.
 - **HTML downloads the whole page with the current document baked into it**: the
-  scene block is rewritten with `toText()` and stamped with the document's id and
-  name, and the file is named after the document. One file, no server, no storage
+  scene block is rewritten with `toText()` and stamped with the document's id,
+  name, and pinned views, and the file is named after the document. One file, no server, no storage
   and nothing to send alongside it. The scene block was always what let the data
   outlive the script; this writes one on purpose.
 - The export is a copy of the live page, so everything the chrome was doing when
@@ -703,6 +705,13 @@ download menu are single fixed-position elements placed by hand against whatever
 they belong to, rather than pseudo-elements on each button. The bar is also centred
 with `margin: auto` rather than a transform, since a transform would make it a
 containing block and clip them anyway.
+
+Placing them by hand means deciding which side to place them on. **A tooltip goes
+above its button, and below it when there is no room above.** The toolbar has the
+whole window over it; the search button in the top corner has eight pixels, and a
+tooltip anchored over that one lands off the top of the screen. Its own text is
+the long form of what the button does: *Jump to documents, pinned views, or text
+nodes · ⌘K*, since an icon in a corner explains itself to nobody.
 
 **The page has no network dependency at all.** The icons are an SVG sprite in the
 markup: 36 symbols defined once, pointed at from every button with `<use>`. They
@@ -784,6 +793,17 @@ It reads as a list of places to go rather than a stack of fields: no boxes, a
 little air between the rows, and the only row drawn on is the one under the
 pointer. The current document is the bold one.
 
+**Nothing in a list shrinks; the list scrolls.** A flex column will squeeze its
+children to fit before it will overflow, so a search with thirty results in it
+crushed every row to a few pixels and slid the snippet and the document name
+over each other. The rows and the two lines inside one are `flex: 0 0 auto`, and
+the box scrolls, which is what the box was given a height for.
+
+**The row that makes another one carries its own tint**, a gap above it, and its
+key after a dot: `+ New document · N`. It is the one row in the list that is not
+a place to go, and drawn faintly at the end of ten others it disappeared into
+them. The dot is the same separator the toolbar tooltips use before a shortcut.
+
 - **The list is ordered by when you were last in a document.** The one you want
   next is usually the one you were in before this one, so it sits on top. Opening a
   document stamps it, including the one the page opens with. Anything saved before
@@ -791,8 +811,14 @@ pointer. The current document is the bold one.
 - **A document is named before it exists.** `+ New document` opens a field where the
   row will be, and Enter or the check mark creates it. Nothing is written until the
   name is, so backing out with Escape leaves no empty document to tidy up later.
+  `n` does the same from anywhere, and the row carries that key beside it. A key
+  printed on a row has to do what the row does, or it is a legend rather than a
+  shortcut: both open the field, neither writes anything on its own.
 - Renaming is the same editor, reached from the pencil, and ends the same way:
   Enter or the check mark. Both start with the name selected, so typing replaces it.
+- **The editor is the same height as the row it replaces.** The field is built to
+  the name's box rather than the 30 pixels the filter fields use, or pressing the
+  pencil hops every row below it by two.
 - **An empty name is not a way out of the editor**, since a name is the whole point
   of it: the check mark hands focus back rather than saving nothing. Clicking away
   keeps a name you had typed and abandons an empty one, which is the reading that
@@ -822,6 +848,60 @@ pointer. The current document is the bold one.
 - Reset resets the document you are in. It is one document's undo of last resort,
   not the page's.
 
+## Pinned views
+
+A pinned view is a place rather than a thing: where the camera was and how far in.
+Also the demo page rather than the primitive, for the same reason documents are —
+minicanvas holds one scene and one camera, and which corners of it are worth
+coming back to is the page's business.
+
+`p` pins where you are. The dashes down the left edge say how many places this
+document holds, one dash each, and pointing at them opens the list: a filter
+field, the views, and `+ Pin current view`. It is the switcher's panel with a
+different list in it, down to the rename pencil, the delete ×, and arrows and
+Enter from the field.
+
+- **Nothing is drawn for it but the dashes.** A rail of them costs a few pixels of
+  the left edge and answers the only question a resting state has to — how many
+  did I keep — without a panel sitting open to do it.
+- **A view names itself after the highest text in it.** With text selected, the
+  highest selected item wins; with nothing selected, the same rule casts its net
+  over whatever text is on screen. The top of what you were looking at is the
+  heading of it, which is the rule an unnamed document already follows down to its
+  own first line. Neither finds anything on a blank stretch of canvas, and then it
+  is `View 3` until you rename it.
+- **Going to one selects nothing.** Arriving somewhere is not the same as picking
+  up what you find there, which is the whole difference between a pinned view and
+  a search result: the result answers *where is that thing*, and hands it to you
+  outlined. The view answers *take me back*, and leaves the place as you found it.
+- **The centre of the window is stored, not the corner.** The format keeps
+  `view.x` and `view.y` as the world point at the top left, which is the right
+  thing for a file and the wrong thing for a bookmark: the same numbers on a
+  wider window frame something else. A pinned view holds the middle and the zoom,
+  and the corner is worked back out on arrival, so a view pinned on a laptop
+  opens on the same thing on a monitor.
+- Views live in the document index beside the names, `minicanvas-demo-docs`, and
+  never in the scene. A bookmark is not a mark on the paper: the format stays
+  `minicanvas/1` with nothing added, drawing the rail costs one small read, and a
+  view survives every edit to what it points at.
+- **Pinning is a keystroke with nothing on screen to show for it**, so the list
+  opens for a couple of seconds on the view just made, tinted, long enough to read
+  the name it chose and change it. Typing in the panel puts the fuse out; so does
+  keeping the pointer there. With the chrome hidden `p` still pins, and there is
+  simply nothing to show you.
+- Deleting one asks nothing first. A document holds work and is confirmed before
+  it goes; a view is a bookmark, and the key that made it makes another.
+- Hovering opens the list, and the rail and the panel touch, so the pointer
+  crossing from one to the other never falls through a gap and closes it. A press
+  held down opens nothing: a stroke drawn from the left edge drags the pointer
+  straight across the rail, and a panel that appeared mid-drag is a panel nobody
+  asked for. A tap opens it too, and only opens it, since a finger raises the
+  hover and the tap together and a toggle would close what it had just opened.
+- The rail is chrome, so ⌘. takes it away with the toolbar and the document name.
+- **An exported page carries the views of the document baked into it**, in
+  `data-views` on the scene block beside the id and the name. The places the
+  author kept travel with the page they were kept in.
+
 ## Search
 
 ⌘K or ⌘space, or the button top right. It matches document names and every text
@@ -833,6 +913,17 @@ A result is the matching line with the words marked, and **the document it came
 from underneath it in small text**. The panel is wider than the switcher because a
 snippet wants the whole width, and the document name below rather than beside it is
 the rest of that same trade.
+
+**Pinned views are in there too**, from every document, marked as such under the
+name. They rank above a line of text and below a document name: somewhere you
+kept on purpose is worth more than a line you happened to write, and less than a
+whole document. Picking one does what picking it in the rail does — takes you
+there, selects nothing.
+
+**An empty box is not an empty answer.** With no query typed, the panel lists
+every pinned view in every document, most recent document first. A search box
+open on nothing is asking where you would like to go, and the places you kept are
+the page's own answer to that. Enter takes the top one.
 
 The index is a trie over each word and each of that word's suffixes, so `plan` and
 `ann` both reach *planning* without walking the corpus. Two things keep it small:
@@ -855,8 +946,8 @@ every keystroke, and it reads the open document live rather than from storage.
 which requirement 1 settles; for a page of notes a trie is smaller and its failures
 are predictable.
 
-Both the name and the search button are chrome, so ⌘. takes them away with the
-toolbar and closes both panels. **The search panel itself is not chrome**: ⌘space
+The name, the search button, and the rail of pinned views are all chrome, so ⌘.
+takes them away with the toolbar and closes every panel. **The search panel itself is not chrome**: ⌘space
 and ⌘K open it from a bare page, since hiding the toolbar is exactly when a
 shortcut is the only way in. It is caught in the capture phase, because the canvas
 reads Space as a pan and would take the cursor with it on the way past. ⌘space is
@@ -917,6 +1008,10 @@ Each one is marked with a `ponytail:` comment in the source.
 - The search index is rebuilt whole rather than per document, and every document's
   scene is parsed to build it. Cheap for a page of notes, wrong for a hundred.
 - Documents are a list in one key. No folders, no manual ordering, no sync.
+- Pinned views ride in that same key, in the order they were made. No reordering,
+  and no view that belongs to more than one document.
+- The rail draws twelve dashes at most. Past a dozen the count stops being the
+  answer and the list is, so the thirteenth pin adds a row and no dash.
 - The HTML export serialises the live DOM rather than re-reading the source file,
   which no page can do from a `file:` URL. What comes out is what the browser
   thinks the markup is, tidied by hand, not the bytes that went in.
@@ -1037,6 +1132,21 @@ Deliberately absent, with the trigger that would justify adding each:
 - Rotate, corner, and edge handles take precedence over shapes stacked underneath.
 - While rotating a group, the selection frame spins with the drag rather than
   breathing to a new upright box each frame.
+- Pinned views on `p`: a rail of dashes down the left edge, one per view, with the
+  switcher's own panel on the end of it. A view keeps the middle of the window and
+  the zoom, names itself after the highest text selected or on screen, renames and
+  deletes the way a document does, and takes you back without selecting anything.
+  Search lists them all when nothing is typed and ranks them between a document
+  and a line of text. An exported page carries the views of the document in it.
+  `n` starts a document, and both add-rows print their key.
+- Fixed: a list long enough to scroll shrank its own rows instead, so thirty
+  search results arrived a few pixels tall with each snippet lying across the
+  document name under it. Rows no longer shrink and the panel scrolls. The
+  add-rows gained a tint, a gap above, and a dot before the key.
+- Fixed: the rename field was 30 pixels tall where the row it replaced was 32, so
+  pressing the pencil nudged every row under it. Tooltips flip below their button
+  when there is no room above, and the search button has one naming what it
+  reaches rather than a browser title.
 
 Fixed along the way: the document rows took the scene panel's `.row` class with
 them, and its top border drew a box around every one; and the toolbar showed the
