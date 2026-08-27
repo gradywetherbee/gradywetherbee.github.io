@@ -233,6 +233,7 @@ These come from the brief and hold for every change:
     { "type": "oval",   "color": "#17171a", "width": 3, "x": 0, "y": 0, "w": 120, "h": 80,
       "fill": "#17171a", "opacity": 0.3 },
     { "type": "text",   "color": "#17171a", "size": 24, "x": 0, "y": 0, "text": "two\nlines" },
+    { "type": "text",   "color": "#17171a", "size": 24, "x": 0, "y": 0, "w": 200, "text": "wraps in a column" },
     { "type": "rect",   "color": "#17171a", "width": 3, "x": 0, "y": 0, "w": 40, "h": 40, "group": "g1" },
     { "type": "image",  "x": 0, "y": 0, "w": 400, "h": 300, "src": "cat.jpg" }
   ]
@@ -249,10 +250,18 @@ These come from the brief and hold for every change:
   ones. That radius is a renderer constant, not a stored field, so nothing in a
   file needs to change if it does. The SVG export matches it with `rx`.
 - Text anchors at its top-left corner and carries its own `size`. Newlines in
-  `text` are real line breaks; the box is as wide as its widest line and as tall as
-  its line count. The font family and the 1.25 line spacing are renderer constants,
-  not stored fields, for the same reason the corner radius is: nothing in a file
-  should break if the renderer's taste changes.
+  `text` are real line breaks; the box is as tall as its row count. The font family
+  and the 1.25 line spacing are renderer constants, not stored fields, for the same
+  reason the corner radius is: nothing in a file should break if the renderer's
+  taste changes.
+- **Text may carry a `w`, and that `w` is a column rather than a box.** Absent, the
+  item is as wide as its widest line and never wraps, which is what every file
+  written before this field says. Present, the words wrap inside it: `w` is the
+  width, the height is still whatever the rows come to, and there is no `h` to
+  contradict. Wrapping is measured at render time, so the same string is one line
+  in a wide column and four in a narrow one without the file changing a character.
+  Only spaces break, and a word wider than the whole column breaks where it runs
+  out of room.
 - Rectangles and ovals may carry `fill`, which is **a colour, not a flag**. Absent
   means unfilled, so a plain outline writes nothing extra. A filled shape catches
   clicks anywhere inside it; an outline only on its edge.
@@ -312,6 +321,8 @@ concern and always works whether or not any tool plugin is loaded.
 | `shift` (hold) | While drawing a rect or oval, constrain to a square. While dragging a corner handle, keep the aspect ratio; an edge drag is one axis by definition, so shift has nothing to hold. While dragging the rotation handle, snap to 15°. While clicking with select, add or remove one item. While nudging, move 10 units instead of 1. With `[` or `]`, move one layer instead of all the way. |
 | arrows | Nudge the selection 1 unit, or 10 with shift. One undo step per key press, not per repeat. |
 | arrows, while typing | Move the caret. Shift extends a selected run, Home and End jump to the ends, and a plain arrow with a run selected collapses to its edge. |
+| alt/option + left or right, while typing | Move a whole word: over the gap in the direction you are going, then over the word itself. Shift extends the run a word at a time. A line break counts as gap, so option and left from the start of a line reaches the last word of the one above. |
+| alt/option + backspace or delete, while typing | Take the whole word behind or ahead of the caret. A run already selected is deleted as it stands, since it says how much to take on its own. |
 | `[` / `]` | Send the selection to the back or bring it to the front. Shift moves one layer instead. Multiple items move as a block and keep their order among themselves. A move that changes nothing records no undo step. Shifted brackets arrive as `{` and `}` on most layouts, and both spellings are accepted. |
 | ctrl/cmd + `g` | Group the selection, or take an existing group apart. Ungrouping leaves every former member selected, each with its own outline. |
 | ctrl/cmd + `c` | Copy the selection to the system clipboard as a scene fragment. While typing, copy the selected run of text. |
@@ -458,10 +469,32 @@ frame first, so the hit region turns with what you see.
 - **Enter makes a new line.** Escape commits, and so does a click elsewhere or a tool
   change. That is the trade multiline asks for: the key that used to finish now
   continues.
-- Left and right move the caret, up and down move between lines keeping the column
-  where the line is long enough, Home and End reach the ends of the current line,
+- **Every part of the editor works on rows the wrap made, not just on newlines.**
+  Once an item has a column, a row is what the reader sees on one line, whether a
+  newline ended it or the wrap did. Up and down move between those rows, a click
+  puts the caret on the one it landed on, and a selected run is painted a row at a
+  time. Every row records where it starts in the string, which is the whole of it:
+  a row the wrap made runs straight into the next one, while a row a newline made
+  has that character sitting between them.
+- A caret exactly on a wrap belongs to the row below, where the next character it
+  types will appear. End is the one place that reads it the other way, stopping
+  after the last word of the row rather than after the space that ended it, since
+  that space is where the row below begins.
+- Left and right move the caret, up and down move between rows keeping the column
+  where the row is long enough, Home and End reach the ends of the current row,
   and ctrl/cmd + `a` takes the whole string. A plain arrow with a run selected
   collapses to that run's edge rather than moving one character.
+- **Option and an arrow move by word, and option and backspace take one.** Both
+  step over whatever is not a word first and then over the word, which puts the
+  caret at the near edge of the word behind you and the far edge of the one
+  ahead. Spaces, punctuation and line breaks are the same kind of gap, so option
+  and left from the start of a line reaches the last word of the line above
+  rather than stopping on the break. It is the same reading of what a word is
+  that a double click already used, from the same two functions, so selecting a
+  word by pointer and stepping over it by keyboard can never disagree.
+- Option with a run already selected deletes the run rather than a word: the
+  selection has said how much to take, and the modifier only decides that
+  question when nothing has answered it.
 - A selected run that crosses lines draws one rectangle per line, since text is not
   one long ribbon: each line has its own left edge to start from.
 - A selected run draws behind the glyphs in the selection blue and is replaced by
@@ -509,11 +542,21 @@ frame first, so the hit region turns with what you see.
 - Scale is clamped to a small positive minimum, so items never flip inside out.
 - Coordinates round to one decimal when the drag ends, not during it. At 40x zoom a
   one-pixel move is 0.025 units and per-frame rounding would swallow it.
-- Text scales its `size` by the average of the two axes. Because its width is
-  measured from the glyphs rather than stored, the arithmetic alone would let the
-  anchored edge drift, so after every frame the result is measured and slid back
-  until the anchored edges sit exactly where they started. Dragging a left handle
-  never moves the right edge, and vice versa.
+- **A left or right edge dragged on text sets its column and never its size.** The
+  words reflow into more or fewer rows and every glyph stays exactly the size it
+  was, which is the resize a paragraph actually wants — text made bigger by being
+  made wider is a heading, not a paragraph. An item that never had a column gets
+  one measured off its own widest line the moment it is dragged, so nothing has to
+  be prepared in advance. The top edge is the anchor on that drag, so the rows grow
+  downwards.
+- Any other drag scales `size` by the average of the two axes, and scales the
+  column with it when there is one, so a corner makes the same text bigger rather
+  than re-wrapping it as it goes.
+- Because a text box is measured rather than stored — glyph widths without a
+  column, reflowed rows with one — the arithmetic alone would let the anchored edge
+  drift, so after every frame the result is measured and slid back until the
+  anchored edges sit exactly where they started. Dragging a left handle never moves
+  the right edge, and vice versa.
 - Stroke and outline weights never change. See the format rule above.
 - The rotation handle sits on a short stalk above the selection box, so it never
   covers the work. The stalk is centred on the knob, and both turn about the same
@@ -998,8 +1041,17 @@ Each one is marked with a `ponytail:` comment in the source.
   it can be dragged.
 - The selection outline around several items at different angles is an upright box,
   even though each item inside it gets an outline of its own that turns.
-- Text is a single line with no wrapping. There is a caret, arrow movement, and
-  selected runs, but no word jumps and no IME support.
+- Text has a caret, arrow and word movement, and selected runs, but no IME
+  support and no paragraph jumps on option with up or down.
+- Wrapping breaks on spaces only: no hyphenation, no dictionary, and nothing that
+  knows a language which does not put spaces between words. A word wider than the
+  column breaks where it runs out of room rather than where a typesetter would.
+- A wrapped item re-wraps its whole string whenever the text, the size, or the
+  column changes, and caches the answer until one of the three does. A paragraph
+  engine would re-wrap from the edited row onwards; a note does not need one.
+- A column sets the width and nothing sets the height: the rows fall where they
+  fall. There is no vertical alignment inside a text box and no clipping, so
+  dragging a top or bottom edge on text still scales the size like a corner.
 - Grouping is one level deep and stores no order of its own.
 - There is no cut. Copy then delete is two keys and no extra code.
 - The search trie indexes suffixes only for the first 40 characters of a word,
@@ -1147,6 +1199,15 @@ Deliberately absent, with the trigger that would justify adding each:
   pressing the pencil nudged every row under it. Tooltips flip below their button
   when there is no room above, and the search button has one naming what it
   reaches rather than a browser title.
+- Option with an arrow moves the caret a word at a time, shift extends the run by
+  a word, and option with backspace or delete takes the word behind or ahead of
+  it. Word boundaries come from the same pair of functions a double click uses.
+- Text wraps. A left or right edge dragged on a text item sets a `w` on it and the
+  words reflow into more or fewer rows at exactly the size they were; a corner
+  still scales the size, and the column with it. Rows carry where they start in
+  the string, so the caret, the arrows, a click, and a selected run all work on
+  what the reader sees rather than on newlines. An item with no `w` is unchanged,
+  which is every file written until now.
 
 Fixed along the way: the document rows took the scene panel's `.row` class with
 them, and its top border drew a box around every one; and the toolbar showed the

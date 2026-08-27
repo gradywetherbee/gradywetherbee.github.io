@@ -1522,7 +1522,6 @@ createMiniCanvas.plugin('item-text', [], function (core) {
 
   const fontOf = core.fontOf = (item) => (item.size || TEXT_SIZE) + 'px ' + FONT;
   const lineHeight = core.lineHeight = (item) => (item.size || TEXT_SIZE) * LINE_SPACING;
-  const linesOf = core.textLines = (item) => String(item.text || '').split('\n');
 
   // Width of a piece of one line. The editor needs this to place a caret, and the
   // box needs it to know how wide the widest line runs.
@@ -1531,30 +1530,106 @@ createMiniCanvas.plugin('item-text', [], function (core) {
     return core.context.measureText(text).width;
   };
 
-  // Where an index into the whole string lands: which line, and how far along it.
+  // How wide the glyphs come out with nothing holding them in.
+  const naturalWidth = core.textWidth = (item) => {
+    let width = 0;
+    for (const line of String(item.text || '').split('\n')) width = Math.max(width, measureLine(item, line));
+    return width;
+  };
+
+  // A text item with no `w` is as wide as its glyphs come out. One with a `w` wraps
+  // in that column: the words reflow into more or fewer rows, and every glyph stays
+  // exactly the size it was.
+  //
+  // A word and the spaces after it travel together, so a space that lands on a wrap
+  // hangs past the column rather than pushing its own word onto the next row, which
+  // is what a text field does.
+  const TOKENS = /[^ ]+ *| +/g;
+  function wrapInto(item, line, start, rows) {
+    if (!item.w || measureLine(item, line) <= item.w) { rows.push({ start: start, text: line }); return; }
+    const before = rows.length;
+    let row = '';
+    for (const token of line.match(TOKENS) || []) {
+      const solid = token.replace(/ +$/, '');
+      if (row && measureLine(item, row + solid) > item.w) {
+        rows.push({ start: start, text: row });
+        start += row.length;
+        row = '';
+      }
+      // A word wider than the whole column has to break somewhere, so it breaks
+      // where it runs out of room. At least one character goes on every row, or a
+      // column narrower than a single glyph would never finish.
+      if (!row && measureLine(item, solid) > item.w) {
+        let rest = token;
+        while (measureLine(item, rest.replace(/ +$/, '')) > item.w) {
+          let cut = 1;
+          while (cut < rest.length && measureLine(item, rest.slice(0, cut + 1)) <= item.w) cut += 1;
+          rows.push({ start: start, text: rest.slice(0, cut) });
+          start += cut;
+          rest = rest.slice(cut);
+        }
+        row = rest;
+        continue;
+      }
+      row += token;
+    }
+    // A word broken across rows can use the line up exactly, and an empty row on
+    // the end of it is a blank line the text does not have. An empty line the text
+    // does have arrives here having pushed nothing, and still gets its row.
+    if (row || rows.length === before) rows.push({ start: start, text: row });
+  }
+
+  // Every row knows where it starts in the string, which is what keeps the caret
+  // honest: a row the wrap made runs straight into the next one, while a row a
+  // newline made has that character between them.
+  //
+  // ponytail: the answer is cached against the text, the size, and the column, and
+  // thrown away when any of the three changes — so a keystroke re-wraps the whole
+  // item. Fine for a note; a paragraph engine would re-wrap from the edited row.
+  const wrapped = new WeakMap();
+  function wrapOf(item) {
+    const key = (item.w || 0) + ':' + (item.size || TEXT_SIZE) + ':' + (item.text || '');
+    const held = wrapped.get(item);
+    if (held && held.key === key) return held;
+    const rows = [];
+    let start = 0;
+    for (const line of String(item.text || '').split('\n')) {
+      wrapInto(item, line, start, rows);
+      start += line.length + 1;   // the newline itself belongs to no row
+    }
+    const entry = { key: key, rows: rows, lines: rows.map((row) => row.text) };
+    wrapped.set(item, entry);
+    return entry;
+  }
+  const rowsOf = core.textRows = (item) => wrapOf(item).rows;
+  const linesOf = core.textLines = (item) => wrapOf(item).lines;
+
+  // Where an index into the whole string lands: which row, and how far along it.
+  // A caret exactly on a wrap belongs to the row below, where the next character
+  // it types will appear.
   core.caretSpot = (item, index) => {
-    const before = String(item.text || '').slice(0, index);
-    const row = (before.match(/\n/g) || []).length;
-    const column = before.length - (before.lastIndexOf('\n') + 1);
-    const line = linesOf(item)[row] || '';
-    return { row: row, column: column, x: measureLine(item, line.slice(0, column)),
+    const rows = rowsOf(item);
+    let row = 0;
+    while (row + 1 < rows.length && rows[row + 1].start <= index) row += 1;
+    const column = Math.max(0, Math.min(index - rows[row].start, rows[row].text.length));
+    return { row: row, column: column, x: measureLine(item, rows[row].text.slice(0, column)),
              y: row * lineHeight(item) };
   };
 
   // The index where a given row and column falls, clamped to what exists.
   core.caretIndex = (item, row, column) => {
-    const lines = linesOf(item);
-    const atRow = Math.max(0, Math.min(lines.length - 1, row));
-    let index = 0;
-    for (let i = 0; i < atRow; i++) index += lines[i].length + 1;
-    return index + Math.max(0, Math.min(lines[atRow].length, column));
+    const rows = rowsOf(item);
+    const at = Math.max(0, Math.min(rows.length - 1, row));
+    return rows[at].start + Math.max(0, Math.min(rows[at].text.length, column));
   };
 
   core.types.text = {
     box(item) {
       const lines = linesOf(item);
-      let width = 0;
-      for (const line of lines) width = Math.max(width, measureLine(item, line));
+      // A column, once it has one, is the width whether the words fill it or not:
+      // it is the thing that was dragged, and the frame has to show what it holds.
+      let width = item.w || 0;
+      if (!width) for (const line of lines) width = Math.max(width, measureLine(item, line));
       return { x: item.x, y: item.y, w: width, h: lines.length * lineHeight(item) };
     },
     hit(item, local, radius) {
@@ -1562,7 +1637,21 @@ createMiniCanvas.plugin('item-text', [], function (core) {
       return local.x >= box.x - radius && local.x <= box.x + box.w + radius
           && local.y >= box.y - radius && local.y <= box.y + box.h + radius;
     },
-    scale(item, scaleX, scaleY) { item.size *= (scaleX + scaleY) / 2; },
+    // **A sideways drag sets the column and leaves the size alone.** The words
+    // reflow into more or fewer rows instead of the letters getting bigger, which
+    // is the one resize a paragraph actually wants. An item that never had a
+    // column gets one measured off its own widest line. Any other drag scales the
+    // size by the average of the two axes, and the column with it, so a corner
+    // makes the same text bigger rather than re-wrapping it.
+    scale(item, scaleX, scaleY) {
+      if (scaleY === 1 && scaleX !== 1) {
+        item.w = Math.max(item.size || TEXT_SIZE, (item.w || naturalWidth(item)) * scaleX);
+        return;
+      }
+      const step = (scaleX + scaleY) / 2;
+      item.size *= step;
+      if (item.w) item.w *= step;
+    },
     draw(item, context) {
       context.textBaseline = 'top';
       // The editor draws selected runs under the glyphs and a caret over them.
@@ -1754,18 +1843,15 @@ createMiniCanvas.plugin('tool-text', ['item-text'], function (core) {
     const from = Math.min(caret, caretAnchor), to = Math.max(caret, caretAnchor);
     const step = core.lineHeight(item);
     context.fillStyle = core.cssColor('--selection-tint', 'rgba(26, 115, 255, 0.28)');
-    let start = 0;
-    core.textLines(item).forEach((line, row) => {
-      const end = start + line.length;
+    core.textRows(item).forEach((row, index) => {
+      const start = row.start, end = start + row.text.length;
       const a = Math.max(from, start), b = Math.min(to, end);
-      if (b >= a && to > start && from <= end) {
-        const left = core.measureLine(item, line.slice(0, a - start));
-        const right = core.measureLine(item, line.slice(0, b - start));
-        // A selected line break shows as a sliver, so an empty line still reads.
-        const width = Math.max(right - left, to > end ? (item.size || TEXT_SIZE) * 0.3 : 0);
-        if (width > 0) context.fillRect(item.x + left, item.y + row * step, width, step);
-      }
-      start = end + 1;
+      if (b < a) return;
+      const left = core.measureLine(item, row.text.slice(0, a - start));
+      const right = core.measureLine(item, row.text.slice(0, b - start));
+      // A selected line break shows as a sliver, so an empty line still reads.
+      const width = Math.max(right - left, to > end ? (item.size || TEXT_SIZE) * 0.3 : 0);
+      if (width > 0) context.fillRect(item.x + left, item.y + index * step, width, step);
     });
     return false;
   });
@@ -1884,6 +1970,24 @@ createMiniCanvas.plugin('tool-text', ['item-text'], function (core) {
     return { from: from, to: to };
   }
 
+  // Where option and an arrow land: over whatever is not a word in the direction
+  // you are going, then over the word itself, which is what puts the caret at the
+  // near edge of the next word going back and the far edge going forward. Spaces,
+  // punctuation and line breaks are all the same kind of nothing here, so option
+  // and left from the start of a line reaches the last word of the one above it
+  // rather than stopping on the break.
+  function wordStep(text, at, step) {
+    let index = at;
+    if (step < 0) {
+      while (index > 0 && kindOf(text, index - 1) !== 'word') index -= 1;
+      while (index > 0 && kindOf(text, index - 1) === 'word') index -= 1;
+    } else {
+      while (index < text.length && kindOf(text, index) !== 'word') index += 1;
+      while (index < text.length && kindOf(text, index) === 'word') index += 1;
+    }
+    return index;
+  }
+
   const pressingText = (world) =>
     core.scene.items[core.itemIndexAt(world, core.GRAB_SLOP / core.scene.view.scale)] === editing;
 
@@ -1990,12 +2094,12 @@ createMiniCanvas.plugin('tool-text', ['item-text'], function (core) {
     else if (key === 'Enter') replaceRange('\n');
     else if (key === 'ArrowLeft' || key === 'ArrowRight') {
       const step = key === 'ArrowLeft' ? -1 : 1;
-      if (!event.shiftKey && caret !== caretAnchor) {
-        // An arrow with a run selected collapses to its edge rather than moving.
-        caret = step < 0 ? Math.min(caret, caretAnchor) : Math.max(caret, caretAnchor);
-      } else {
-        caret = Math.max(0, Math.min(text.length, caret + step));
-      }
+      // A plain arrow with a run selected collapses to that run's edge rather
+      // than moving. Option then takes a word from where it collapsed to.
+      const run = !event.shiftKey && caret !== caretAnchor;
+      if (run) caret = step < 0 ? Math.min(caret, caretAnchor) : Math.max(caret, caretAnchor);
+      if (event.altKey) caret = wordStep(text, caret, step);
+      else if (!run) caret = Math.max(0, Math.min(text.length, caret + step));
       if (!event.shiftKey) caretAnchor = caret;
     }
     else if (key === 'ArrowUp' || key === 'ArrowDown') {
@@ -2007,18 +2111,28 @@ createMiniCanvas.plugin('tool-text', ['item-text'], function (core) {
       if (!event.shiftKey) caretAnchor = caret;
     }
     else if (key === 'Home' || key === 'End') {
+      const rows = core.textRows(editing);
       const spot = core.caretSpot(editing, caret);
-      const line = core.textLines(editing)[spot.row];
-      caret = core.caretIndex(editing, spot.row, key === 'Home' ? 0 : line.length);
+      const row = rows[spot.row];
+      const next = rows[spot.row + 1];
+      // On a row the wrap made, End sits after the last word rather than after the
+      // space that ended it, since that space is where the next row begins.
+      const soft = next && next.start === row.start + row.text.length;
+      const end = soft ? row.text.replace(/ +$/, '').length : row.text.length;
+      caret = row.start + (key === 'Home' ? 0 : end);
       if (!event.shiftKey) caretAnchor = caret;
     }
     else if (held && key.toLowerCase() === 'a') { caretAnchor = 0; caret = text.length; }
     else if (key === 'Backspace') {
       if (caret !== caretAnchor) replaceRange('');
+      // A selected run answers first: option only decides how much to take when
+      // nothing has been taken already.
+      else if (event.altKey && caret > 0) { caretAnchor = wordStep(text, caret, -1); replaceRange(''); }
       else if (caret > 0) { caret -= 1; caretAnchor = caret; editing.text = text.slice(0, caret) + text.slice(caret + 1); recentreText(); }
     }
     else if (key === 'Delete') {
       if (caret !== caretAnchor) replaceRange('');
+      else if (event.altKey && caret < text.length) { caretAnchor = wordStep(text, caret, 1); replaceRange(''); }
       else if (caret < text.length) { editing.text = text.slice(0, caret) + text.slice(caret + 1); recentreText(); }
     }
     else if (key.length === 1 && !held) replaceRange(key);
@@ -2197,7 +2311,8 @@ createMiniCanvas.plugin('select', [], function (core) {
     for (const item of selection) {
       core.transformItem(item, (x, y) => [core.round(x), core.round(y)]);
       if (typeof item.size === 'number') item.size = core.round(item.size);
-      if (typeof item.w === 'number') { item.w = core.round(item.w); item.h = core.round(item.h); }
+      if (typeof item.w === 'number') item.w = core.round(item.w);
+      if (typeof item.h === 'number') item.h = core.round(item.h);
     }
   };
 
@@ -2638,9 +2753,10 @@ createMiniCanvas.plugin('transform', ['select'], function (core) {
       if (type && type.scale) type.scale(item, scaleX, scaleY);
     }
 
-    // Text has no stored width: it is however wide the glyphs come out, which does
-    // not scale in step with its position. So rather than trust the arithmetic,
-    // measure the result and slide the anchored edges back where they started.
+    // Text is measured, not stored: without a column it is however wide the glyphs
+    // come out, and with one it reflows to a height nothing here predicted. Either
+    // way the arithmetic above cannot be trusted to have left the anchored edges
+    // alone, so measure the result and slide them back where they started.
     const after = resize.angle ? core.itemBox(list[0]) : core.boundsOf(list);
     if (after) {
       const dx = anchor.x - (resize.side.x ? after.x + after.w : after.x);
