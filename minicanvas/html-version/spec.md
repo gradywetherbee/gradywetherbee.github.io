@@ -1,8 +1,8 @@
 # minicanvas spec
 
 Version 1 of the format (`minicanvas/1`). This document tracks what the thing is
-meant to do; `index.html` in this folder is the implementation and the demo page
-around it. The DOM build lives in `minicanvas/index.html`; both read and write the
+meant to do; `dom-index.html` in this folder is the implementation and the demo
+page around it. The canvas build lives in `minicanvas/`; both read and write the
 same scene JSON.
 
 ## Goal
@@ -11,18 +11,44 @@ A canvas primitive you can paste into any HTML page. It should still open and wo
 in a hundred years. Small enough to inline in a `<script>` tag, with a serialised
 form short enough to read and edit by hand.
 
+## DOM rendering
+
+This build draws with DOM elements instead of a `<canvas>` tag. Every item is an
+element inside a scaled layer; pan and zoom are one CSS transform on that layer,
+and the selection frame is a screen-space overlay on top. The browser composes,
+hit-tests, and (for text) edits what you see, which is why several things that
+the canvas build had to implement by hand are gone or much smaller:
+
+- **Reconcile, not redraw.** Items keep their elements between frames. A change to
+  one item leaves the rest untouched and the browser repaints what moved.
+- **Hit testing** uses `elementFromPoint` on the item elements, with a ring of
+  sample points for slop. Unfilled shapes are SVG with no fill, so the browser
+  hits the stroke alone — the same rule the canvas build spelled out in code.
+- **Text** is a `contenteditable` div while open. Caret, blink, arrow keys, word
+  selection, drag-to-highlight, and copy/paste of a run are all native; the text
+  plugin is mostly open, commit, and read-back.
+- **Dark mode** writes pen colours as CSS variables on the elements. The theme
+  flips in the stylesheet with no redraw and no resolved-colour cache.
+- **PNG export** is asynchronous: the scene is serialised to SVG, drawn into an
+  offscreen canvas, and returned as a `Promise`. Canvas appears only as an encoder.
+
+The file format, plugin hook order, public API, and toolbar behaviour are unchanged.
+The canvas build remains the reference for gzipped module sizes; `dom-index.html`
+inlines the same features in one page.
+
 ## Using it
 
 One script tag per file, then one call. There is no build step and nothing to
-configure.
+configure. The demo page inlines everything in one file; the table below still
+names the logical modules the canvas build splits across files.
 
 ```html
+<div id="board" style="width:100%;height:400px;touch-action:none"></div>
+
 <script src="minicanvas/minicanvas.js"></script>          <!-- always first -->
 <script src="minicanvas/minicanvas-item-stroke.js"></script>
 <script src="minicanvas/minicanvas-tool-draw.js"></script>
 <script src="minicanvas/minicanvas-history.js"></script>
-
-<canvas id="board" style="width:100%;height:400px"></canvas>
 
 <script>
   const board = MiniCanvas.mount('#board');
@@ -86,7 +112,7 @@ board.on('penchange', (e) => swatch(e.detail));   // { color, width, opacity, fi
 
 board.toText();      // the file format, pretty-printed
 board.toSVG();       // static SVG, no JavaScript needed to view it
-board.toPNG();       // an offscreen canvas, ready for toBlob()
+board.toPNG();       // a Promise for an offscreen canvas, ready for toBlob()
 board.destroy();     // unhooks everything; for single-page apps
 ```
 
@@ -96,16 +122,12 @@ where it started. Typing records nothing at all after the empty item is created.
 
 So the example page saves on `change` *and* on every `pointerup` and `keyup`,
 comparing the serialised scene before writing so the extra calls cost nothing when
-nothing moved. The `pointerup` listener is on the window rather than the canvas,
+nothing moved. The `pointerup` listener is on the window rather than the board,
 because undo and redo deliberately record no edit and their buttons are not on the
-canvas. Anything persisting a scene needs the same treatment: `change` alone will
+board. Anything persisting a scene needs the same treatment: `change` alone will
 save you the position an item was dragged *from*.
 
-Panning and zooming are not edits. While the camera is moving, the canvas repaints
-every frame but **selection overlay repositioning waits until the gesture ends**,
-since handles are the expensive part of a view tick, not the bitmap itself. Wheel
-and pinch end is debounced briefly so a scroll does not flicker the overlay on
-every tick.
+Panning and zooming are not edits.
 
 The page keeps the toolbar under a **separate key**: which tool, the pen's colour,
 width, opacity and fill, whether the bar is showing, and whether the scene panel is
@@ -113,7 +135,7 @@ open. How the page was left is not what was drawn on it, and being able to clear
 without the other is worth a second key. Resetting the drawing leaves the pen alone.
 A corrupt or foreign value in either key is ignored rather than thrown.
 
-### Several canvases on one page
+### Several boards on one page
 
 Each mount is independent, and they can have different features:
 
@@ -122,10 +144,10 @@ const editor = MiniCanvas.mount('#editor', { features: ['draw', 'select', 'histo
 const preview = MiniCanvas.mount('#preview', { scene: editor.toText(), features: 'viewer' });
 ```
 
-**Whichever canvas you last pointed at owns the keyboard.** Undo on one never
-reaches the other. With a single canvas on the page the question never arises, and
+**Whichever board you last pointed at owns the keyboard.** Undo on one never
+reaches the other. With a single board on the page the question never arises, and
 it keeps working before you have clicked anything. `minicanvas-two-canvases.html`
-is a working example.
+in the canvas folder is a working example.
 
 ## Shape of the code
 
@@ -133,7 +155,9 @@ The library is a small core plus plugins. Every file is plain top-level code wit
 module system, so a build is a list of files in order.
 
 The core gives you a scene that renders and a view you can pan and zoom. It knows
-the file format and nothing about tools. Everything else registers itself by name:
+the file format and nothing about tools. Everything else registers itself by name.
+The gzipped sizes below are from the canvas build's split files; this DOM demo
+inlines the same features.
 
 | Feature | Gzipped | Needs | What it adds |
 |---|---:|---|---|
@@ -162,7 +186,8 @@ the file format and nothing about tools. Everything else registers itself by nam
 **Renderers and tools are separate files on purpose.** A published scene needs to
 draw every type and create none of them, so the type that says how a rect looks is
 not the tool that drags one out. The text split is the clearest case: the renderer
-is 0.7K and the editor is 1.8K.
+is 0.7K and the editor is 1.8K in the canvas build. In the DOM build the editor
+is much smaller because the browser owns caret, selection, and blink.
 
 | Build | Gzipped |
 |---|---:|
@@ -179,8 +204,9 @@ empty `core.toolKeys` the shortcuts have nothing to select and the tool stays `p
 
 A plugin is a function handed the core. It registers item types, tools, and hooks:
 
-- `core.types.<name> = { draw, box, bounds, hit, within, move, scale, svg }` — an
-  item type. Anything the core cannot draw is still kept and written back out, so a
+- `core.types.<name> = { dom, update, box, bounds, hit, within, move, scale, svg }` —
+  an item type in the DOM build. The canvas build uses `draw` instead of `dom` and
+  `update`. Anything the core cannot draw is still kept and written back out, so a
   file made with more plugins than you loaded survives the round trip.
 - `createMiniCanvas.plugin(name, needs, setup)` registers it. `needs` is what mount
   should pull in alongside it.
@@ -322,7 +348,7 @@ concern and always works whether or not any tool plugin is loaded.
 | ctrl/cmd + shift + `z` | Redo. Matches on `event.code` as well as the key, since shift turns `z` into `Z`. |
 
 Typing in a text field suppresses all of these. So does the text tool: while a
-caret is live the canvas is a text field, every key goes into the item, and the
+caret is live the board is a text field, every key goes into the item, and the
 tool shortcuts are just letters again.
 
 ## Pointer
@@ -345,7 +371,7 @@ tool shortcuts are just letters again.
 | ctrl/cmd + wheel, or pinch | Zoom toward the pointer, clamped between 0.05x and 40x |
 | | Sensitivity is `core.zoomRate`, default 4. Zoom is multiplicative, so the rate is an exponent: 4 means a gesture covers four times the zoom range 1 did. Set it live to retune. |
 | middle-drag | Pan |
-| drag on the canvas | Does not sweep toolbar labels or other page chrome into a browser selection: `body.mc-dragging`, `selectstart`, and `preventDefault` on pointerdown block that for the duration of the press |
+| drag inside an open text item | Native drag-to-highlight; the board does not capture the pointer or apply `user-select: none` while the press is inside the editor |
 | paste or drop an image | Insert it at the viewport center, scaled to fit 600 units, as a data URI |
 
 ## Hit testing
@@ -353,7 +379,9 @@ tool shortcuts are just letters again.
 Two different tolerances, on purpose:
 
 - **Selecting and clicking** allow 8 screen pixels of forgiveness on top of the
-  item's own painted width, so a 1-unit line is still easy to grab.
+  item's own painted width, so a 1-unit line is still easy to grab. In the DOM
+  build this is a transparent grab band under thin ink plus a ring of sample
+  points around the press when `elementFromPoint` misses the stroke directly.
 - **Erasing allows none.** It only removes an item when the cursor is over ink that
   is actually visible. A line's target area is exactly its own width, so thinning a
   line thins its eraser target with it, and the white space where a thick line used
@@ -363,11 +391,17 @@ What counts as visible, by type:
 
 | Type | Hit region |
 |---|---|
-| stroke | Within `width / 2` of the centreline |
+| stroke | Within `width / 2` of the centreline (SVG stroke on the element) |
 | rect | Within `width / 2` of the outline. The hollow middle is not clickable. |
 | oval | Within `width / 2` of the ellipse, approximated. Hollow middle likewise. |
 | text | Anywhere in its box, measured from the rendered string |
 | image | Anywhere in its box |
+
+The DOM build asks the browser what is under the pointer via `elementFromPoint`,
+walking up to the item element. Slop is spent on a ring of eight sample points in
+screen space when the centre miss was near enough to matter. Unfilled shapes carry
+no SVG fill, so the browser hits the stroke alone without a separate hollow-middle
+test.
 
 A rotated item is tested by turning the cursor back into the item's own upright
 frame first, so the hit region turns with what you see.
@@ -392,8 +426,8 @@ frame first, so the hit region turns with what you see.
 - **A marquee in progress draws as a solid grey filled box**, in its own colour
   rather than the selection's: it is a region being swept, not a thing that has
   been chosen, so it leaves the blue to the outlines inside it.
-- **What the marquee is over is outlined in selection blue while the drag is live,
-  and only actually selected when the button comes up.** The preview promises exactly
+- **What the marquee is over is outlined as selected while the drag is live, and
+  only actually selected when the button comes up.** The preview promises exactly
   what letting go will take, group members included. Handles are left off it: they
   belong to a selection you can already act on, and this one does not exist yet.
 - The preview is recomputed against the whole scene on every move rather than
@@ -449,10 +483,12 @@ frame first, so the hit region turns with what you see.
   caret whenever one exists, and the next click can go straight to another item
   instead of needing Escape first. `setTool(name, keepTyping)` is the one path that
   changes tools without committing.
-- The caret blinks on a 530ms timer that exists only while typing does. It holds
-  solid on every keystroke, the way any text field does, and stops on every route
-  out of editing: commit, tool change, undo, load, or export. A caret sitting
-  perfectly still on a drawing canvas reads as a stray mark rather than a cursor.
+- **The open item is `contenteditable`.** Caret, blink, arrow keys, Home and End,
+  double-click to take a word, drag-to-highlight, and copy/paste of a selected run
+  are all native. The board opts out of pointer capture, `body.mc-dragging`, and
+  `preventDefault` on a press inside the editor so drag selection works. Labels on
+  the board still have `user-select: none` when nothing is being edited, so dragging
+  across the scene does not highlight every text item you cross.
 - **Enter makes a new line.** Escape commits, and so does a click elsewhere or a tool
   change. That is the trade multiline asks for: the key that used to finish now
   continues.
@@ -460,10 +496,6 @@ frame first, so the hit region turns with what you see.
   where the line is long enough, Home and End reach the ends of the current line,
   and ctrl/cmd + `a` takes the whole string. A plain arrow with a run selected
   collapses to that run's edge rather than moving one character.
-- A selected run that crosses lines draws one rectangle per line, since text is not
-  one long ribbon: each line has its own left edge to start from.
-- A selected run draws behind the glyphs in the selection blue and is replaced by
-  the next thing typed.
 - Double-clicking a text item with the select tool reopens it with the **whole
   string selected**, the way double-clicking a field does anywhere else: type to
   replace it, or press an arrow to drop the caret at that end and keep what is
@@ -475,6 +507,9 @@ frame first, so the hit region turns with what you see.
   hanging below and to the right of the cursor. A reopened item keeps its position
   and grows rightward, since it already has one.
 - An empty text item leaves nothing behind and gives back the undo step it took.
+- Text is read back with `innerText` on commit and after each keystroke while open,
+  so the scene stays in step with what is on screen. Paste is filtered to plain
+  text either way.
 
 ## Resizing and rotation
 
@@ -493,13 +528,10 @@ frame first, so the hit region turns with what you see.
   pick it up, and the room inside a frame belongs to what the frame is drawn around.
   The direction is read off the edge's own outward `push`, so the sign of the
   offset says which side of the line the pointer is on.
-- **A handle under the pointer wins over whatever shape is stacked beneath it.**
-  Rotate, corner, and edge grabs on the current selection take precedence, so a
-  press on the rotation knob does not select an unrelated item underneath. Elsewhere
-  on the frame, something not in the selection under the pointer is still asking to
-  be picked up, and picking it up beats resizing through a frame edge that happens
-  to run past. The body of a selected item is always a move, even where the item
-  itself is hollow and catches nothing on its outline alone.
+- **Handles and edges answer for the selection and nothing else.** With something
+  else under the pointer, the press picks that up instead: a frame edge running past
+  an unrelated shape never steals it. And since the body of a selected item is a
+  move, an unfilled shape whose only hit region is its outline is still draggable.
 - The scale factor is measured from where the pointer went down, not from the handle
   position, so it starts at exactly 1 and nothing jumps on the first frame.
 - Every frame scales the geometry captured when the drag started, not the previous
@@ -514,15 +546,9 @@ frame first, so the hit region turns with what you see.
   never moves the right edge, and vice versa.
 - Stroke and outline weights never change. See the format rule above.
 - The rotation handle sits on a short stalk above the selection box, so it never
-  covers the work. The stalk is centred on the knob, and both turn about the same
-  top-centre anchor. Rotating turns the whole selection about the selection's centre:
+  covers the work. Rotating turns the whole selection about the selection's centre:
   boxed items swing their position and add to their `angle`, strokes have the turn
   baked into their points.
-- **While a group or mixed selection is turning, the outer frame spins with the
-  drag** rather than re-fitting an upright box every frame. The bounds at press time
-  are frozen and the cumulative angle is applied until the pointer comes up, when the
-  frame settles back to an upright fit. A lone rotated item already behaved this way
-  through its own `angle`; this extends the same feedback to multi-item selections.
 - **Shift snaps the angle the item lands on, not the amount it turned by.** Something
   sitting at 7° goes to 0° or 15°, never to 22°. That is what straightening means,
   and snapping the delta instead would leave a crooked thing permanently crooked.
@@ -617,10 +643,11 @@ frame first, so the hit region turns with what you see.
   `transform="rotate(...)"`. Text is emitted with a baseline offset of 0.8 of its
   size, which is the usual gap between canvas's top-anchored text and SVG's
   baseline-anchored text.
-- `toPNG(items, pixelRatio)` renders to an offscreen canvas by pointing the same
-  drawing code at a different context, and returns that canvas for the caller to
-  turn into a blob. Pass the selection to export just that, or nothing for the whole
-  scene. It fits the content with 8 units of padding and defaults to 2x.
+- `toPNG(items, pixelRatio)` returns a **Promise** for an offscreen canvas. The
+  scene is serialised to SVG, drawn into an image, and rasterised — canvas is an
+  encoder, not the renderer. Pass the selection to export just that, or nothing for
+  the whole scene. It fits the content with 8 units of padding and defaults to 2x.
+  In the canvas build this was synchronous; here an image has to load first.
 - **HTML downloads the whole page with the current document baked into it**: the
   scene block is rewritten with `toText()` and stamped with the document's id and
   name, and the file is named after the document. One file, no server, no storage
@@ -656,18 +683,17 @@ and moves only the lightness, which is the whole reason for oklch here: the six 
 read as the same six pens in either theme rather than as six new colours. Neutrals
 all sit on hue 285 so they drift together.
 
-**The canvas goes dark too, and the pens go light with it.** CSS cannot reach pixels
-drawn on a canvas, so the renderer reaches back out to CSS instead: it looks each
-stored colour up in `PENS`, asks the page what that variable currently resolves to,
-and draws with the answer. The theme lives in the stylesheet, where it was asked to
-live.
+**The board goes dark too, and the pens go light with it.** Pen colours on disk
+stay as hex; on screen they are written as CSS variables (`var(--pen-red, #c0392b)`)
+on the item elements, so the stylesheet decides what they look like. In the canvas
+build the renderer had to ask the page what each variable resolved to and cache the
+answer; here the browser resolves them on every paint with no redraw and no cache.
 
 - **Files never change.** A red stroke is `#c0392b` on disk in both themes. The
   theme decides what that looks like, not what it is.
 - A colour outside the six pens is drawn exactly as written. Hand-edit a scene to
   `#123456` and you get `#123456`, dark mode or not.
-- Switching the system theme repaints without touching the scene, through a
-  `matchMedia` listener that clears the resolved-colour cache.
+- Switching the system theme repaints without touching the scene.
 - **Exports carry the document's colours, not the theme's.** A PNG made in dark mode
   is the same PNG made in light mode, and it paints its own white paper so it is
   never light ink on transparent nothing. The SVG export does the same.
@@ -675,12 +701,12 @@ live.
   fall back to the stored colour.
 
 Buttons draw from `--surface` rather than `--paper`: the paper variable belongs to
-the canvas, and reusing it for chrome would tie the toolbar to the drawing surface.
+the board, and reusing it for chrome would tie the toolbar to the drawing surface.
 
 ## Toolbar
 
 The demo toolbar is not part of the primitive; delete it when embedding. It floats
-bottom-centre over the canvas rather than pushing it down, so the drawing surface is
+bottom-centre over the board rather than pushing it down, so the drawing surface is
 the whole window and the chrome is a thing on top of it. ctrl/cmd + `.` takes it
 away and brings it back; a small pill appears in its place, because a shortcut is
 the only way back and a shortcut nobody knows is no way back at all.
@@ -744,7 +770,7 @@ It follows two rules worth keeping in any replacement:
 - Tool buttons carry their key as a small keycap, so the shortcut is learnable
   without a legend. Keycaps take their color from the button, so they invert along
   with the pressed state.
-- The canvas fires `toolchange`, and the toolbar listens rather than tracking tool
+- The board fires `toolchange`, and the toolbar listens rather than tracking tool
   state of its own. A tool picked by keyboard and a tool picked by click land in the
   same place.
 - It fires `selectionchange` the same way, carrying `{ items, units }`, and the whole
@@ -771,7 +797,7 @@ It follows two rules worth keeping in any replacement:
 
 Also the demo page, not the primitive: minicanvas holds one scene, and how many of
 them a page keeps is the page's business. Switching is a save and a load, so none of
-this reaches inside the canvas.
+this reaches inside the board.
 
 The current document's name sits top left. Clicking it opens a panel **over** the
 name, so the list appears where the thing you clicked was: a filter field, the
@@ -858,7 +884,7 @@ are predictable.
 Both the name and the search button are chrome, so ⌘. takes them away with the
 toolbar and closes both panels. **The search panel itself is not chrome**: ⌘space
 and ⌘K open it from a bare page, since hiding the toolbar is exactly when a
-shortcut is the only way in. It is caught in the capture phase, because the canvas
+shortcut is the only way in. It is caught in the capture phase, because the board
 reads Space as a pan and would take the cursor with it on the way past. ⌘space is
 Spotlight on macOS and often never reaches the page at all, which is why there is a
 second key rather than one.
@@ -866,7 +892,7 @@ second key rather than one.
 ## Embedding
 
 ```html
-<canvas id="board" style="width:100%;height:400px;touch-action:none"></canvas>
+<div id="board" style="width:100%;height:400px;touch-action:none"></div>
 <script>/* paste createMiniCanvas here */</script>
 <script>
   const board = createMiniCanvas(document.getElementById('board'));
@@ -876,7 +902,7 @@ second key rather than one.
 </script>
 ```
 
-`touch-action:none` on the canvas is load-bearing. Without it mobile browsers
+`touch-action:none` on the board is load-bearing. Without it mobile browsers
 consume the pointer events.
 
 ### API
@@ -907,8 +933,7 @@ Each one is marked with a `ponytail:` comment in the source.
   it can be dragged.
 - The selection outline around several items at different angles is an upright box,
   even though each item inside it gets an outline of its own that turns.
-- Text is a single line with no wrapping. There is a caret, arrow movement, and
-  selected runs, but no word jumps and no IME support.
+- Text has no wrapping: lines break only on Enter. There is no IME support.
 - Grouping is one level deep and stores no order of its own.
 - There is no cut. Copy then delete is two keys and no extra code.
 - The search trie indexes suffixes only for the first 40 characters of a word,
@@ -939,7 +964,7 @@ Deliberately absent, with the trigger that would justify adding each:
 - **Filled shapes.** Would need a `fill` field; the renderers already branch by type.
 - **Nested groups.** One level is enough for a primitive, and nesting would need a
   real container in the format.
-- **Multi-line text.** One line, no wrapping.
+- **Text wrapping.** Lines break only on Enter; the box grows with the widest line.
 - **Multi-user editing.** Out of scope for a portable primitive.
 - **Line and arrow tools.** A two-point stroke already covers a line.
 
@@ -1028,15 +1053,18 @@ Deliberately absent, with the trigger that would justify adding each:
   styling the hand-drawn set needed.
 - Marquee selection stopped treating an unfilled shape's hollow middle as solid: a
   drag that never reaches the stroke no longer selects it.
-- The marquee became a solid grey box with blue preview outlines while you drag,
-  and commits only on release.
-- Pan and zoom defer selection-overlay repositioning until the camera settles.
+- The marquee became a solid grey box that shows what it is over as selected while
+  you drag, and commits only on release.
+- **DOM build:** items render as elements inside a scaled layer; the canvas build
+  in `minicanvas/` remains the modular reference. Same format, same API, same
+  toolbar and demo chrome.
+- Text editing is `contenteditable`: caret, blink, selection, and drag-to-highlight
+  are native. The board skips pointer capture inside the open editor so drag
+  selection works; labels elsewhere stay `user-select: none` during scene drags.
 - Right-click and ctrl/cmd-click no longer change the selection. Shift-click still
   adds or removes.
-- Dragging on the canvas no longer sweeps toolbar labels into a browser selection.
-- Rotate, corner, and edge handles take precedence over shapes stacked underneath.
-- While rotating a group, the selection frame spins with the drag rather than
-  breathing to a new upright box each frame.
+- `toPNG()` returns a Promise (SVG → image → canvas). Dark mode needs no colour
+  cache: pen colours are CSS variables on the elements.
 
 Fixed along the way: the document rows took the scene panel's `.row` class with
 them, and its top border drew a box around every one; and the toolbar showed the

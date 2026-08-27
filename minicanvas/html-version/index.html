@@ -198,7 +198,7 @@
     transition: opacity .15s ease, transform .15s ease;
   }
   .top-chrome.away { opacity: 0; transform: translateY(-8px); pointer-events: none; }
-  #doc-button { left: 12px; max-width: min(480px, 67vw); justify-content: flex-start; }
+  #doc-button { left: 12px; max-width: min(480px, 67.5vw); justify-content: flex-start; }
   #doc-button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   #search-button { right: 12px; }
 
@@ -207,7 +207,7 @@
     background: var(--surface); border: 1px solid var(--rule); border-radius: 10px;
     box-shadow: 0 6px 24px var(--shadow);
   }
-  #doc-panel { left: 12px; width: min(480px, calc(100vw - 24px)); }
+  #doc-panel { left: 12px; width: min(390px, calc(100vw - 24px)); }
   #search-panel { right: 12px; width: min(560px, calc(100vw - 24px)); }
   #doc-panel[hidden], #search-panel[hidden] { display: none; }
 
@@ -268,10 +268,90 @@
   .list .doc-row .field { flex: 1 1 auto; min-width: 0; border-color: var(--rule); }
   .list .doc-row.editing .side { opacity: 1; pointer-events: auto; background: var(--chrome); }
   .empty { padding: 6px 8px; opacity: .55; }
-  /* Pointer capture keeps events on the canvas, but selection is document-wide: a
-     drag that crosses the toolbar still sweeps its labels in. This class is on for
-     the whole press and pairs with selectstart below. */
+  /* --- the board ------------------------------------------------------------
+     Three layers. The scene layer carries the view as one transform, so panning
+     and zooming move every item at once without touching any of them. The overlay
+     never scales: a nine-pixel handle is nine pixels at every zoom, which is
+     exactly what scaling it would ruin. */
+  .mc-host { position: relative; overflow: hidden; touch-action: none; }
+  .mc-layer {
+    position: absolute; inset: 0;
+    transform-origin: 0 0;
+    /* Items answer the pointer only when there is something to point at them
+       with. Every other tool is drawing on top of the work, and an element that
+       took the press would steal the one that starts a stroke. */
+    pointer-events: none;
+  }
+  /* While the camera moves, hint the compositor to keep the scene on its own
+     layer so pan and zoom are one texture move, not a walk of every item. */
+  .mc-host.mc-camera-moving .mc-layer { will-change: transform; }
+  .mc-host.mc-picking .mc-layer { pointer-events: auto; }
+  .mc-overlay { position: absolute; inset: 0; pointer-events: none; }
+  /* The ruler measures text off-screen at scale 1, so a box knows its size before
+     it has an element and keeps knowing it while the view is zoomed. */
+  .mc-ruler {
+    position: absolute; visibility: hidden; white-space: pre;
+    top: -9999px; left: -9999px; pointer-events: none;
+  }
+
+  .mc-item { position: absolute; overflow: visible; }
+  /* An <svg> is a replaced element, and its box answers the pointer like an image
+     would — which would make the hollow middle of an outlined shape catchable
+     after all. The box is turned off and the shapes inside turn themselves back
+     on, so what answers is the ink and the band under it, and nothing else. */
+  .mc-layer svg.mc-item { display: block; pointer-events: none; }
+  /* The ink is what you see; the grab band under it is what you hit. A hairline is
+     nearly impossible to point at, and the canvas build spent the same forgiveness
+     in arithmetic rather than in a second path.
+
+     Paint is set on the shapes themselves, never here. A CSS rule outranks a
+     presentation attribute, so a `fill` in this block would quietly beat the one
+     the renderer just wrote and every filled shape would come out hollow. What is
+     left here is only what is true of all of them. */
+  .mc-item .mc-ink {
+    stroke-linecap: round; stroke-linejoin: round; pointer-events: none;
+  }
+  .mc-item .mc-grab {
+    stroke: transparent; stroke-linecap: round; stroke-linejoin: round;
+  }
+
+  .mc-text {
+    white-space: pre; margin: 0; cursor: default;
+    /* Text on the board is real DOM, so the browser will happily select it on a
+       drag unless told not to. Off by default; the open editor turns it back on. */
+    user-select: none;
+    /* The item's own box is the text's box: no padding, no border, nothing that
+       would put the glyphs anywhere but where the format says they are. */
+  }
+  /* While open, the element is a field: caret placement, word selection, and
+     drag-to-highlight are all native and need user-select back. */
+  .mc-text.mc-editing { outline: none; cursor: text; pointer-events: auto; user-select: text; }
+  /* Pointer capture keeps events on the board, but selection is document-wide: a
+     drag that crosses the toolbar or another text item still sweeps them in. This
+     class is on for the whole press and pairs with user-select: none here; the
+     open editor above keeps its own user-select: text and is unaffected. */
   body.mc-dragging { user-select: none; }
+  .mc-image { display: block; width: 100%; height: 100%; }
+
+  /* --- the overlay ---------------------------------------------------------- */
+  .mc-frame, .mc-marquee, .mc-handle, .mc-knob, .mc-stalk {
+    position: absolute; box-sizing: border-box; pointer-events: none;
+  }
+  .mc-frame { border: 1.5px solid var(--selection); }
+  .mc-frame.mc-hovered { opacity: .6; }
+  .mc-marquee { border: 1.5px solid var(--marquee); background: var(--marquee-fill); }
+  .mc-handle, .mc-knob {
+    width: 9px; height: 9px; margin-left: -4.5px; margin-top: -4.5px;
+    background: var(--handle-fill); border: 1.5px solid var(--selection);
+  }
+  .mc-knob { border-radius: 50%; }
+  /* The stalk hangs from the knob down to the box top and turns about its top
+     centre, matching the knob's own anchor point. */
+  .mc-stalk {
+    width: 1.5px; margin-left: -0.75px;
+    background: var(--selection);
+    transform-origin: 50% 0;
+  }
 </style>
 
 <!-- The icons: the official Material Symbols Outlined glyphs, fetched from
@@ -320,7 +400,7 @@
   <symbol id="i-undo" viewBox="0 -960 960 960"><path d="M280-200v-80h284q63 0 109.5-40T720-420q0-60-46.5-100T564-560H312l104 104-56 56-200-200 200-200 56 56-104 104h252q97 0 166.5 63T800-420q0 94-69.5 157T564-200H280Z"/></symbol>
 </svg>
 
-<canvas id="board"></canvas>
+<div id="board"></div>
 
 <div id="toolbar">
   <!-- Making things. Put away while something is selected, since the toolbar is
@@ -441,31 +521,58 @@
 <!-- The scene travels with the page. Any reader, human or machine, can find it
      without running the script. Delete the script and the data survives. -->
 <script type="application/json" id="scene">
-  {"format":"minicanvas/1","items":[{"type":"text","color":"#17171a","size":16.8,"x":496.9,"y":328.2,"text":"Welcome to minicanvas.\n\nIt's a tiny but very functional canvas that can be inlined in any HTML page.\n\nLearn the shortcuts and then hide the toolbar for the best experience.\n\nHappy drawing!"}]}
+  {"format":"minicanvas/1","items":[{"type":"text","color":"#17171a","size":16.8,"x":496.9,"y":328.2,"text":"Minicanvas.\n\nIt's a tiny but very functional canvas that can be inlined in any HTML page.\n\nLearn the shortcuts and then hide the toolbar for the best experience.\n\nHappy drawing!"}]}
 </script>
 
 <script>
-/* minicanvas core — a canvas, a scene, and the seams to hang everything else on.
+/* minidom core — a div, a scene, and the seams to hang everything else on.
    Load this first, then whichever plugins you want, in the order listed in the
    spec. Every file is plain top-level code: concatenate them, or use one script
    tag each. No build step either way.
 
    The core alone gives you a scene that renders and a view you can pan and zoom.
-   It knows the file format and nothing about tools. */
+   It knows the file format and nothing about tools.
+
+   The difference from the canvas build is where the pixels live. Every item is an
+   element inside a scaled layer, so the browser does the compositing, the hit
+   testing, and the text editing that the canvas build had to do by hand. The file
+   format, the plugin seams, and the public API are unchanged: the same scene JSON
+   opens in either one. */
 const miniCanvasPlugins = [];   // held here, not looked up through the function
 const miniCanvasRegistry = [];  // { name, needs, setup }, in load order
 const instances = [];
 let active = null;
 
-function createMiniCanvas(canvasElement, options) {
+function createMiniCanvas(hostElement, options) {
   const settings = options || {};
 
+  // Three layers, and only the middle one moves. The scene layer carries the view
+  // as a CSS transform, so panning and zooming are one style write rather than a
+  // redraw, and every item inside it can be positioned in world units and forget
+  // the view exists. The overlay is screen-space and never scales: a handle is
+  // nine pixels at every zoom, which is exactly what a transform would ruin.
+  hostElement.classList.add('mc-host');
+  const layer = document.createElement('div');
+  layer.className = 'mc-layer';
+  const overlay = document.createElement('div');
+  overlay.className = 'mc-overlay';
+  // Measured off-screen at scale 1, so a text box knows its size before it has an
+  // element on the page — and keeps knowing it while the view is zoomed.
+  const ruler = document.createElement('div');
+  ruler.className = 'mc-ruler';
+  hostElement.appendChild(layer);
+  hostElement.appendChild(overlay);
+  hostElement.appendChild(ruler);
+
   const core = {
-    canvas: canvasElement,
-    context: canvasElement.getContext('2d'),   // swapped out briefly when exporting
+    host: hostElement,
+    canvas: hostElement,   // what events are dispatched on, and what the page sizes
+    layer: layer,
+    overlay: overlay,
+    ruler: ruler,
     scene: { format: 'minicanvas/1', view: { x: 0, y: 0, scale: 1 }, items: [] },
     tool: 'pan',
-    types: {},        // item type -> { draw, box, hit, move, svg }
+    types: {},        // item type -> { dom, update, box, hit, move, svg }
     toolKeys: {},     // letter -> tool name, filled in by whichever tools are loaded
     api: {},          // what the caller gets back; plugins add their own methods
     hooks: {}
@@ -489,14 +596,14 @@ function createMiniCanvas(canvasElement, options) {
   };
 
   // Every window-level listener is recorded so destroy() can take them all back off
-  // again: a canvas in a single-page app should not outlive its element.
+  // again: a board in a single-page app should not outlive its element.
   const cleanups = [];
   core.listen = (target, type, handler, options) => {
     target.addEventListener(type, handler, options);
     cleanups.push(() => target.removeEventListener(type, handler, options));
   };
 
-  // With several canvases on a page, keys belong to the one you last pointed at.
+  // With several boards on a page, keys belong to the one you last pointed at.
   // With one, that question never comes up.
   instances.push(core);
   core.isActive = () => instances.length === 1 || active === core;
@@ -526,7 +633,7 @@ function createMiniCanvas(canvasElement, options) {
   };
 
   core.emit = (name, detail) => {
-    core.canvas.dispatchEvent(new CustomEvent(name, { detail: detail }));
+    core.host.dispatchEvent(new CustomEvent(name, { detail: detail }));
   };
 
   // History is a plugin. Without it, recording does nothing and every caller still
@@ -542,42 +649,32 @@ function createMiniCanvas(canvasElement, options) {
   const round = core.round = (value) => Math.round(value * 10) / 10;
 
   // --- colour ---------------------------------------------------------------
-  // CSS cannot reach pixels drawn on a canvas, so the renderer reaches back out to
-  // CSS instead: it asks the page what a variable currently resolves to.
+  // The canvas build had to ask the page what a variable resolved to, because CSS
+  // cannot reach pixels drawn on a canvas. Elements are not pixels: a pen colour
+  // is written as the variable itself and the browser resolves it, so switching
+  // themes repaints the scene with no redraw and no cache to invalidate.
   const PENS = core.PENS = {
     '#17171a': '--pen-ink',   '#c0392b': '--pen-red',    '#d98c1f': '--pen-amber',
     '#2e8b57': '--pen-green', '#1f6feb': '--pen-blue',   '#6b4de6': '--pen-violet'
   };
-  let themeColors = new Map();
   core.exporting = false;   // exports carry the document's own colours
 
   core.cssColor = (name, fallback) => {
-    if (themeColors.has(name)) return themeColors.get(name);
-    let value = fallback;
     try {
       const found = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-      if (found) value = found;
+      if (found) return found;
     } catch (error) { /* no stylesheet in reach: the fallback is already right */ }
-    themeColors.set(name, value);
-    return value;
+    return fallback;
   };
 
   core.themed = (color) => {
     const name = PENS[String(color).toLowerCase()];
-    return (core.exporting || !name) ? color : core.cssColor(name, color);
+    return (core.exporting || !name) ? color : 'var(' + name + ', ' + color + ')';
   };
-
-  if (typeof window.matchMedia === 'function') {
-    const dark = window.matchMedia('(prefers-color-scheme: dark)');
-    if (dark.addEventListener) dark.addEventListener('change', () => {
-      themeColors.clear();
-      core.requestRedraw();
-    });
-  }
 
   // --- geometry -------------------------------------------------------------
   core.screenPointOf = (event) => {
-    const bounds = core.canvas.getBoundingClientRect();
+    const bounds = core.host.getBoundingClientRect();
     return { x: event.clientX - bounds.left, y: event.clientY - bounds.top };
   };
 
@@ -586,8 +683,15 @@ function createMiniCanvas(canvasElement, options) {
     return { x: screenPoint.x / view.scale + view.x, y: screenPoint.y / view.scale + view.y };
   };
 
+  // The other direction, which the overlay needs on every frame: a frame drawn in
+  // screen space has to know where a world box landed.
+  const toScreen = core.toScreen = (world) => {
+    const view = core.scene.view;
+    return { x: (world.x - view.x) * view.scale, y: (world.y - view.y) * view.scale };
+  };
+
   const viewCenter = core.viewCenter = () =>
-    toWorld({ x: core.canvas.clientWidth / 2, y: core.canvas.clientHeight / 2 });
+    toWorld({ x: core.host.clientWidth / 2, y: core.host.clientHeight / 2 });
 
   core.zoomAround = (screenPoint, factor) => {
     const view = core.scene.view;
@@ -654,7 +758,8 @@ function createMiniCanvas(canvasElement, options) {
 
   // How far an item's ink spills past its geometry. A stroke's centreline is not
   // its edge: half the pen width sits outside on every side, which is why a box
-  // drawn on the raw bounds cuts through the middle of a thick line.
+  // drawn on the raw bounds cuts through the middle of a thick line. Here it is
+  // also how much room the item's own element needs: an SVG clips at its edges.
   const inkPad = core.inkPad = (item) => {
     const type = core.types[item.type];
     return (type && type.ink) ? type.ink(item) : 0;
@@ -705,35 +810,82 @@ function createMiniCanvas(canvasElement, options) {
     return minX === Infinity ? null : { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
   };
 
-  // Topmost item under a world point, or -1. `radius` is forgiveness in world
-  // units: selecting is generous, erasing passes 0 so only visible ink counts.
-  core.itemIndexAt = (world, radius) => {
-    for (let i = core.scene.items.length - 1; i >= 0; i--) {
-      const item = core.scene.items[i];
-      const type = core.types[item.type];
-      if (!type || !type.hit) continue;
-      if (type.hit(item, toLocal(item, world), radius)) return i;
+  // --- what is under the pointer --------------------------------------------
+  // The canvas build answered this with a hit test per type. Here the browser has
+  // already done it: every item is an element, and an unfilled shape is an SVG
+  // shape with no fill, which the browser hit-tests on its stroke alone. That is
+  // the same rule the canvas build spelled out in `nearEdge`, for free.
+  //
+  // `radius` is forgiveness in world units. Elements have no notion of it, so it
+  // is spent twice: on a transparent grab band drawn under thin ink, and on a ring
+  // of sample points here, which is what makes an empty shape's outline catchable
+  // without making its middle catchable too.
+  const elementItems = core.elementItems = new WeakMap();   // element -> item
+
+  const itemAtPoint = (screenPoint) => {
+    const bounds = core.host.getBoundingClientRect();
+    const found = document.elementFromPoint(bounds.left + screenPoint.x, bounds.top + screenPoint.y);
+    for (let node = found; node && node !== core.host; node = node.parentNode) {
+      if (elementItems.has(node)) return elementItems.get(node);
     }
-    return -1;
+    return null;
+  };
+
+  core.itemAt = (world, radius) => {
+    const middle = toScreen(world);
+    const direct = itemAtPoint(middle);
+    if (direct) return direct;
+    const reach = (radius || 0) * core.scene.view.scale;
+    if (reach < 1) return null;
+    for (let step = 0; step < 8; step++) {   // a ring, not a disc: the middle missed
+      const angle = step * Math.PI / 4;
+      const found = itemAtPoint({ x: middle.x + Math.cos(angle) * reach,
+                                  y: middle.y + Math.sin(angle) * reach });
+      if (found) return found;
+    }
+    return null;
+  };
+
+  core.itemIndexAt = (world, radius) => {
+    const item = core.itemAt(world, radius);
+    return item ? core.scene.items.indexOf(item) : -1;
   };
 
   // --- rendering ------------------------------------------------------------
+  // Not a redraw: a reconcile. Every item keeps its element between frames, so a
+  // frame that changed one item leaves the other elements untouched and the
+  // browser repaints what actually moved.
   let redrawQueued = false;
   let viewQueued = false;
   let announcedEdits = 0;
+  const elements = new Map();   // item -> element
   let cameraMoving = false;
   let cameraEndTimer = null;
+
+  function viewTransformOf(view) {
+    return 'scale(' + view.scale + ') translate(' + (-view.x) + 'px, ' + (-view.y) + 'px)';
+  }
+
+  // One style write on the scene layer. Called synchronously on every camera
+  // tick so pan and zoom never wait for the next frame.
+  function applyViewTransform() {
+    layer.style.transform = viewTransformOf(core.scene.view);
+  }
 
   const beginCameraMove = core.beginCameraMove = () => {
     if (cameraMoving) return;
     cameraMoving = true;
+    core.host.classList.add('mc-camera-moving');
   };
 
   const endCameraMove = core.endCameraMove = () => {
     if (!cameraMoving) return;
     cameraMoving = false;
+    core.host.classList.remove('mc-camera-moving');
     if (cameraEndTimer) { clearTimeout(cameraEndTimer); cameraEndTimer = null; }
     core.fire('overlay');
+    // Grab bands scale with zoom; a full reconcile picks that up once the
+    // camera has settled rather than on every wheel or pinch tick.
     core.requestRedraw();
   };
 
@@ -742,16 +894,20 @@ function createMiniCanvas(canvasElement, options) {
     cameraEndTimer = setTimeout(() => { cameraEndTimer = null; endCameraMove(); }, 150);
   };
 
-  // Pan and zoom repaint the canvas every tick; overlay repositioning waits until
-  // the camera stops — with many shapes selected, handles are the expensive part.
+  // Pan and zoom only move the layer transform; the item list is unchanged.
+  // Overlay repositioning waits until the camera stops — with many shapes
+  // selected, handles are the expensive part of a view tick, not the transform.
+  function applyView() {
+    applyViewTransform();
+    if (!cameraMoving) core.fire('overlay');
+  }
+
   core.requestViewUpdate = () => {
-    if (cameraMoving || redrawQueued) {
-      if (!redrawQueued) core.requestRedraw();
-      return;
-    }
+    applyViewTransform();
+    if (cameraMoving || redrawQueued) return;
     if (viewQueued) return;
     viewQueued = true;
-    requestAnimationFrame(() => { viewQueued = false; if (!cameraMoving) core.requestRedraw(); });
+    requestAnimationFrame(() => { viewQueued = false; if (!cameraMoving) core.fire('overlay'); });
   };
 
   core.requestRedraw = () => {
@@ -761,40 +917,72 @@ function createMiniCanvas(canvasElement, options) {
     requestAnimationFrame(() => { redrawQueued = false; redraw(); });
   };
 
-  core.drawItem = (item) => {
-    const type = core.types[item.type];
-    if (!type || !type.draw) return;   // a newer file still round-trips through here
-    // Opacity is a core concern because it belongs to every type: one globalAlpha
-    // covers a stroke's ink, a shape's fill, and a photograph alike.
-    const framed = item.angle || item.opacity !== undefined;
-    if (framed) core.context.save();
-    if (item.opacity !== undefined) core.context.globalAlpha = item.opacity;
-    if (item.angle) {
-      const middle = itemCenter(item);
-      core.context.translate(middle.x, middle.y);
-      core.context.rotate(radiansOf(item.angle));
-      core.context.translate(-middle.x, -middle.y);
+  // Where an item's element sits and how big it is. The element covers the item's
+  // box grown by its ink, because an SVG clips at its own edges and half a pen
+  // width lives outside the geometry.
+  core.placeItem = (item, element) => {
+    const box = itemBox(item) || boundsOf([item]);
+    if (!box) return null;
+    const pad = inkPad(item);
+    const left = box.x - pad, top = box.y - pad;
+    const width = box.w + pad * 2, height = box.h + pad * 2;
+    element.style.left = left + 'px';
+    element.style.top = top + 'px';
+    element.style.width = width + 'px';
+    element.style.height = height + 'px';
+    element.style.opacity = item.opacity === undefined ? '' : item.opacity;
+    // Rotation is a CSS transform about the item's own centre, which is the same
+    // point the format rotates about, so the two agree without any arithmetic.
+    element.style.transform = item.angle ? 'rotate(' + item.angle + 'deg)' : '';
+    if (element.tagName === 'svg') {
+      element.setAttribute('viewBox', left + ' ' + top + ' ' + width + ' ' + height);
     }
-    type.draw(item, core.context);
-    if (framed) core.context.restore();
+    return { x: left, y: top, w: width, h: height };
   };
 
-  function redraw() {
-    const context = core.context;
-    const ratio = window.devicePixelRatio || 1;
-    const width = core.canvas.clientWidth;
-    const height = core.canvas.clientHeight;
-    if (core.canvas.width !== Math.round(width * ratio)) {
-      core.canvas.width = Math.round(width * ratio);
-      core.canvas.height = Math.round(height * ratio);
+  core.drawItem = (item) => {
+    const type = core.types[item.type];
+    if (!type || !type.dom) return null;   // a newer file still round-trips through here
+    let element = elements.get(item);
+    if (!element) {
+      element = type.dom(item, core);
+      element.classList.add('mc-item');
+      elements.set(item, element);
+      elementItems.set(element, item);
     }
-    context.setTransform(ratio, 0, 0, ratio, 0, 0);
-    context.clearRect(0, 0, width, height);
-    context.scale(core.scene.view.scale, core.scene.view.scale);
-    context.translate(-core.scene.view.x, -core.scene.view.y);
+    // On the page straight away, in whatever order, because something that has
+    // just been made may need to be focused or measured before the next frame
+    // reorders everything.
+    if (element.parentNode !== layer) layer.appendChild(element);
+    core.placeItem(item, element);
+    type.update(item, element, core);
+    return element;
+  };
 
-    for (const item of core.scene.items) core.drawItem(item);
-    if (!cameraMoving) core.fire('overlay');
+  // The element an item is drawn as, made if it does not exist yet. The text
+  // editor needs one it can put a caret in the moment the item is created.
+  core.elementOf = (item) => { core.drawItem(item); return elements.get(item) || null; };
+
+  function redraw() {
+    applyView();
+
+    const live = new Set();
+    core.scene.items.forEach((item, index) => {
+      const element = core.drawItem(item);
+      if (!element) return;
+      live.add(element);
+      // Document order is paint order, so the element list is the item list. Only
+      // a move that is actually wrong touches the DOM.
+      if (layer.children[index] !== element) {
+        layer.insertBefore(element, layer.children[index] || null);
+      }
+    });
+    for (const [item, element] of elements) {
+      if (live.has(element)) continue;
+      element.remove();
+      elements.delete(item);
+    }
+
     core.fire('afterdraw');
     if (edits !== announcedEdits) { announcedEdits = edits; core.emit('change', core.api); }
   }
@@ -804,7 +992,7 @@ function createMiniCanvas(canvasElement, options) {
   core.toolKeys.h = 'pan';   // the hand tool; always available, needs no plugin
 
   const applyCursor = core.applyCursor = () => {
-    core.canvas.style.cursor = (core.tool === 'pan' || core.spaceHeld) ? 'grab'
+    core.host.style.cursor = (core.tool === 'pan' || core.spaceHeld) ? 'grab'
       : core.tool === 'select' ? 'default'
       : 'crosshair';
   };
@@ -816,9 +1004,13 @@ function createMiniCanvas(canvasElement, options) {
     core.tool = name;
     core.fire('toolenter', name);
     applyCursor();
+    // Only the select tool wants the browser's own hit testing. Every other tool
+    // is drawing on top of the work, and an element that answers the pointer would
+    // steal the press that starts a stroke.
+    core.host.classList.toggle('mc-picking', name === 'select');
     core.requestRedraw();
     // Whoever drew the toolbar owns its pressed states, so say the tool changed
-    // rather than reaching out of the canvas to update buttons.
+    // rather than reaching out of the board to update buttons.
     core.emit('toolchange', name);
   };
 
@@ -829,27 +1021,38 @@ function createMiniCanvas(canvasElement, options) {
   core.lastScreenPoint = null;
   core.hoverPoint = null;
 
-  // A drag across the canvas would otherwise sweep toolbar labels and other page
-  // chrome into a browser selection. A body class for the press, selectstart, and
-  // preventDefault on pointerdown block that.
+  // The board's text is DOM, so dragging would otherwise highlight every label the
+  // pointer crosses — canvas items and chrome alike. Three layers: CSS off by
+  // default, a body class for the duration of a press, and blocking selectstart
+  // and the default on pointerdown. The open editor opts out of all three.
   const syncSelectLock = () => {
     document.body.classList.toggle('mc-dragging', activePointers.size > 0);
   };
 
-  core.canvas.addEventListener('selectstart', (event) => {
-    event.preventDefault();
+  core.host.addEventListener('selectstart', (event) => {
+    if (!event.target.closest('.mc-editing')) event.preventDefault();
   });
 
-  core.canvas.addEventListener('pointerdown', (event) => {
-    active = core;   // whichever canvas you last touched owns the keyboard
+  core.host.addEventListener('pointerdown', (event) => {
+    active = core;   // whichever board you last touched owns the keyboard
+    const screenPoint = core.screenPointOf(event);
+
+    // The open editor owns the press: capture and body.mc-dragging would steal
+    // pointer events and block native drag-to-highlight inside the field.
+    if (event.target.closest('.mc-editing')) {
+      core.fire('pointerdown', event, { screenPoint: screenPoint, world: toWorld(screenPoint) });
+      return;
+    }
 
     // Right click and ctrl/cmd-click are not selection gestures. Middle click
     // still reaches pan below.
     if (event.button !== 0 && event.button !== 1) return;
     if (event.button === 0 && (event.ctrlKey || event.metaKey)) return;
 
-    core.canvas.setPointerCapture(event.pointerId);
-    const screenPoint = core.screenPointOf(event);
+    // Capture on the host, not on the item that happened to be under the press:
+    // capturing on an item takes its element out of the hit test for the rest of
+    // the drag, which is the one moment the drag needs it there.
+    core.host.setPointerCapture(event.pointerId);
     activePointers.set(event.pointerId, screenPoint);
     core.lastScreenPoint = screenPoint;
     syncSelectLock();   // body.mc-dragging — see syncSelectLock above
@@ -872,7 +1075,7 @@ function createMiniCanvas(canvasElement, options) {
     return true;
   }, 30);
 
-  core.canvas.addEventListener('pointermove', (event) => {
+  core.host.addEventListener('pointermove', (event) => {
     core.hoverPoint = core.screenPointOf(event);   // remembered even when nothing is pressed
     if (!activePointers.has(event.pointerId)) {
       // Nothing is pressed, so this is a hover. Plugins that care get told; the
@@ -911,11 +1114,11 @@ function createMiniCanvas(canvasElement, options) {
       else core.requestRedraw();
     }
   }
-  // Direct, like the other canvas listeners: those live and die with the element,
+  // Direct, like the other host listeners: those live and die with the element,
   // and only window-level ones need taking back off in destroy().
-  core.canvas.addEventListener('pointerleave', (event) => core.fire('hover', event, null));
-  core.canvas.addEventListener('pointerup', endPointer);
-  core.canvas.addEventListener('pointercancel', endPointer);
+  core.host.addEventListener('pointerleave', (event) => core.fire('hover', event, null));
+  core.host.addEventListener('pointerup', endPointer);
+  core.host.addEventListener('pointercancel', endPointer);
 
   function pinch() {
     const [a, b] = [...activePointers.values()];
@@ -932,7 +1135,7 @@ function createMiniCanvas(canvasElement, options) {
     lastPinch = { distance: distance, middle: middle };
   }
 
-  core.canvas.addEventListener('wheel', (event) => {
+  core.host.addEventListener('wheel', (event) => {
     event.preventDefault();
     beginCameraMove();
     if (event.ctrlKey || event.metaKey) {          // trackpad pinch and ⌘-wheel
@@ -949,7 +1152,7 @@ function createMiniCanvas(canvasElement, options) {
   core.listen(window, 'keydown', (event) => {
     const tag = event.target && event.target.tagName;
     if (tag === 'TEXTAREA' || tag === 'INPUT') return;
-    if (!core.isActive()) return;   // one keystroke, one canvas
+    if (!core.isActive()) return;   // one keystroke, one board
 
     // Space pans from anywhere, including while a toolbar button holds focus.
     // Those buttons still answer to Enter, which is how they respond anyway.
@@ -975,7 +1178,7 @@ function createMiniCanvas(canvasElement, options) {
 
   if (window.ResizeObserver) {
     const observer = new ResizeObserver(core.requestRedraw);
-    observer.observe(core.canvas);
+    observer.observe(core.host);
     cleanups.push(() => observer.disconnect());
   }
   core.listen(window, 'resize', core.requestRedraw);
@@ -986,12 +1189,12 @@ function createMiniCanvas(canvasElement, options) {
     if (!box) return;
     const gap = padding == null ? 24 : padding;
     // A flat or upright box has no extent on one axis, so that axis sets no limit.
-    const across = box.w ? (core.canvas.clientWidth - gap * 2) / box.w : Infinity;
-    const down = box.h ? (core.canvas.clientHeight - gap * 2) / box.h : Infinity;
+    const across = box.w ? (core.host.clientWidth - gap * 2) / box.w : Infinity;
+    const down = box.h ? (core.host.clientHeight - gap * 2) / box.h : Infinity;
     const scale = Math.min(across, down);
     core.scene.view.scale = Math.min(40, Math.max(0.05, scale === Infinity ? 1 : scale));
-    core.scene.view.x = box.x + box.w / 2 - core.canvas.clientWidth / 2 / core.scene.view.scale;
-    core.scene.view.y = box.y + box.h / 2 - core.canvas.clientHeight / 2 / core.scene.view.scale;
+    core.scene.view.x = box.x + box.w / 2 - core.host.clientWidth / 2 / core.scene.view.scale;
+    core.scene.view.y = box.y + box.h / 2 - core.host.clientHeight / 2 / core.scene.view.scale;
     core.requestRedraw();
   };
 
@@ -1002,12 +1205,12 @@ function createMiniCanvas(canvasElement, options) {
                      text: 'item-text', image: 'item-image' };
 
   // A scene full of items nothing can draw looks exactly like a broken page. Say so
-  // once, at load, rather than leaving someone staring at an empty canvas.
+  // once, at load, rather than leaving someone staring at an empty board.
   function warnAboutUnrenderable() {
     const missing = new Set();
     for (const item of core.scene.items) {
       const type = core.types[item.type];
-      if (!type || !type.draw) missing.add(item.type);
+      if (!type || !type.dom) missing.add(item.type);
     }
     if (!missing.size || typeof console === 'undefined') return;
     const plugins = [...missing].map((type) => DRAWN_BY[type]).filter(Boolean);
@@ -1022,7 +1225,10 @@ function createMiniCanvas(canvasElement, options) {
     core.scene.view.scale = core.scene.view.scale || 1;
     edits = announcedEdits = 0;   // a fresh document has no unsaved edits
     cameraMoving = false;
-    if (cameraEndTimer) { clearTimeout(cameraEndTimer); cameraEndTimer = null; }
+    core.host.classList.remove('mc-camera-moving');
+    // The old scene's elements belong to items nobody holds any more.
+    for (const [, element] of elements) element.remove();
+    elements.clear();
     core.fire('load');
     warnAboutUnrenderable();
     core.requestRedraw();
@@ -1035,12 +1241,15 @@ function createMiniCanvas(canvasElement, options) {
 
   Object.assign(core.api, {
     // Listen for 'change' (an edit was recorded), 'toolchange', or 'selectionchange'.
-    on: (type, handler) => { core.canvas.addEventListener(type, handler); return core.api; },
-    off: (type, handler) => { core.canvas.removeEventListener(type, handler); return core.api; },
+    on: (type, handler) => { core.host.addEventListener(type, handler); return core.api; },
+    off: (type, handler) => { core.host.removeEventListener(type, handler); return core.api; },
     destroy: () => {
       if (cameraEndTimer) clearTimeout(cameraEndTimer);
       cleanups.forEach((undo) => undo());
       cleanups.length = 0;
+      layer.remove();
+      overlay.remove();
+      ruler.remove();
       const at = instances.indexOf(core);
       if (at >= 0) instances.splice(at, 1);
       if (active === core) active = null;
@@ -1057,7 +1266,7 @@ function createMiniCanvas(canvasElement, options) {
   });
 
   // Closing over the list rather than reading createMiniCanvas.plugins means a
-  // wrapper or a re-export of the factory still builds a working canvas.
+  // wrapper or a re-export of the factory still builds a working board.
   for (const plugin of settings.plugins || miniCanvasPlugins) plugin(core);
 
   applyCursor();
@@ -1162,6 +1371,7 @@ Object.defineProperty(createMiniCanvas, 'features', {
 });
 
 if (typeof window !== 'undefined') window.MiniCanvas = createMiniCanvas;
+
 
 /* pens — the current colour, width, opacity, and fill, and the keys that change
    them. Whatever is selected changes with the pen, so one key does both jobs.
@@ -1268,24 +1478,47 @@ createMiniCanvas.plugin('pens', [], function (core) {
   });
 });
 
+
 /* item: stroke — how a freehand stroke draws, measures, and exports. No tool: a
-   read-only build wants this without the pen.
+   read-only build renders every stroke in the file and makes none.
    Needs: core. */
 createMiniCanvas.plugin('item-stroke', [], function (core) {
+  const SVG_NS = 'http://www.w3.org/2000/svg';
+
+  const pathOf = (stroke) => {
+    const points = stroke.points;
+    if (points.length < 2) return '';
+    // A single tap is a 0.01-long line, not a special-cased dot: round caps turn
+    // it into one, which is the same trick the canvas build used.
+    if (points.length === 2) return 'M' + points[0] + ' ' + points[1] + 'l0.01 0';
+    let d = 'M' + points[0] + ' ' + points[1];
+    for (let i = 2; i < points.length; i += 2) d += 'L' + points[i] + ' ' + points[i + 1];
+    return d;
+  };
+
   core.types.stroke = {
-    draw(stroke, context) {
-      const points = stroke.points;
-      if (points.length < 2) return;
-      context.strokeStyle = core.themed(stroke.color);
-      context.lineWidth = stroke.width;
-      context.lineCap = 'round';
-      context.lineJoin = 'round';
-      context.beginPath();
-      context.moveTo(points[0], points[1]);
-      // A single tap is a 0.01-long line, not a special-cased dot.
-      if (points.length === 2) context.lineTo(points[0] + 0.01, points[1]);
-      for (let i = 2; i < points.length; i += 2) context.lineTo(points[i], points[i + 1]);
-      context.stroke();
+    dom() {
+      const svg = document.createElementNS(SVG_NS, 'svg');
+      // The grab band goes under the ink and answers the pointer for it: a hairline
+      // is nearly impossible to hit at the width it is drawn, and the canvas build
+      // spent GRAB_SLOP on the same problem in arithmetic.
+      svg.appendChild(document.createElementNS(SVG_NS, 'path')).setAttribute('class', 'mc-grab');
+      svg.appendChild(document.createElementNS(SVG_NS, 'path')).setAttribute('class', 'mc-ink');
+      return svg;
+    },
+
+    update(stroke, svg) {
+      const [grab, ink] = svg.childNodes;
+      const d = pathOf(stroke);
+      const slop = core.GRAB_SLOP * 2 / core.scene.view.scale;
+      grab.setAttribute('d', d);
+      grab.setAttribute('fill', 'none');
+      grab.setAttribute('pointer-events', 'stroke');
+      grab.setAttribute('stroke-width', Math.max(stroke.width, slop));
+      ink.setAttribute('d', d);
+      ink.setAttribute('fill', 'none');   // a path fills by default, and ink is a line
+      ink.setAttribute('stroke', core.themed(stroke.color));
+      ink.setAttribute('stroke-width', stroke.width);
     },
 
     // Round caps and joins, so the ink reaches half the pen width in every direction.
@@ -1302,17 +1535,6 @@ createMiniCanvas.plugin('item-stroke', [], function (core) {
         stroke.points[i] = moved[0];
         stroke.points[i + 1] = moved[1];
       }
-    },
-
-    hit(stroke, local, radius) {
-      const points = stroke.points;
-      const reach = radius + stroke.width / 2;
-      if (points.length === 2) return Math.hypot(points[0] - local.x, points[1] - local.y) < reach;
-      for (let j = 0; j + 3 < points.length; j += 2) {
-        if (core.distanceToSegment(local.x, local.y, points[j], points[j + 1],
-                                   points[j + 2], points[j + 3]) < reach) return true;
-      }
-      return false;
     },
 
     // Strokes are box-selected by their points, not their bounding box, so a
@@ -1336,82 +1558,64 @@ createMiniCanvas.plugin('item-stroke', [], function (core) {
 /* item: shapes — how rectangles and ovals draw, hit, and export. No tools.
    Needs: core. */
 createMiniCanvas.plugin('item-shapes', [], function (core) {
+  const SVG_NS = 'http://www.w3.org/2000/svg';
   const CORNER_RADIUS = 6;   // world units, a renderer choice and not stored
   // Corners stay gentle, and shrink out of the way on small rectangles.
   const cornerRadiusOf = (shape) => Math.max(0, Math.min(CORNER_RADIUS, shape.w / 4, shape.h / 4));
 
-  // Unfilled shapes answer to their outline only, so a big rectangle drawn around
-  // other work does not swallow every click inside it.
-  function nearEdge(shape, local, reach) {
-    if (shape.type === 'rect') {
-      const outside = local.x < shape.x - reach || local.x > shape.x + shape.w + reach
-                   || local.y < shape.y - reach || local.y > shape.y + shape.h + reach;
-      const inside = local.x > shape.x + reach && local.x < shape.x + shape.w - reach
-                  && local.y > shape.y + reach && local.y < shape.y + shape.h - reach;
-      return !outside && !inside;
-    }
-    const centerX = shape.x + shape.w / 2, centerY = shape.y + shape.h / 2;
-    const radiusX = shape.w / 2 || 0.01, radiusY = shape.h / 2 || 0.01;
-    const normalised = Math.hypot((local.x - centerX) / radiusX, (local.y - centerY) / radiusY);
-    // Scaling the normalised distance by the smaller radius approximates the real
-    // distance to the ellipse. Close enough for a 9px grab zone.
-    return Math.abs(normalised - 1) * Math.min(radiusX, radiusY) < reach;
-  }
-
+  // An unfilled shape answers only to its outline, so a big rectangle drawn around
+  // other work does not swallow every click inside it. The canvas build worked
+  // that out in `nearEdge`; an SVG shape with no fill is hit-tested on its stroke
+  // alone, so here it is what the browser already does.
   const shapeType = {
-    draw(shape, context) {
-      context.strokeStyle = core.themed(shape.color);
-      context.lineWidth = shape.width;
-      context.lineJoin = 'round';
-      context.beginPath();
-      if (shape.type === 'rect') {
-        // arcTo rather than roundRect, which only landed in browsers around 2023.
-        const radius = cornerRadiusOf(shape);
-        const right = shape.x + shape.w, bottom = shape.y + shape.h;
-        context.moveTo(shape.x + radius, shape.y);
-        context.arcTo(right, shape.y, right, bottom, radius);
-        context.arcTo(right, bottom, shape.x, bottom, radius);
-        context.arcTo(shape.x, bottom, shape.x, shape.y, radius);
-        context.arcTo(shape.x, shape.y, right, shape.y, radius);
-        context.closePath();
-      } else {
-        context.ellipse(shape.x + shape.w / 2, shape.y + shape.h / 2,
-                        shape.w / 2, shape.h / 2, 0, 0, Math.PI * 2);
+    dom(shape) {
+      const svg = document.createElementNS(SVG_NS, 'svg');
+      const tag = shape.type === 'rect' ? 'rect' : 'ellipse';
+      svg.appendChild(document.createElementNS(SVG_NS, tag)).setAttribute('class', 'mc-grab');
+      svg.appendChild(document.createElementNS(SVG_NS, tag)).setAttribute('class', 'mc-ink');
+      return svg;
+    },
+
+    update(shape, svg) {
+      const [grab, ink] = svg.childNodes;
+      const slop = core.GRAB_SLOP * 2 / core.scene.view.scale;
+      for (const node of [grab, ink]) {
+        if (shape.type === 'rect') {
+          node.setAttribute('x', shape.x);
+          node.setAttribute('y', shape.y);
+          node.setAttribute('width', Math.max(0, shape.w));
+          node.setAttribute('height', Math.max(0, shape.h));
+          node.setAttribute('rx', cornerRadiusOf(shape));
+        } else {
+          node.setAttribute('cx', shape.x + shape.w / 2);
+          node.setAttribute('cy', shape.y + shape.h / 2);
+          node.setAttribute('rx', Math.max(0, shape.w / 2));
+          node.setAttribute('ry', Math.max(0, shape.h / 2));
+        }
       }
       // Filled or outlined, never both. Drawing an outline over a fill of the same
       // colour doubles up along the edge, which shows as a darker rim as soon as
       // the item is anything less than opaque.
-      if (shape.fill) {
-        context.fillStyle = core.themed(shape.fill);
-        context.fill();
-      } else {
-        context.stroke();
-      }
+      grab.setAttribute('stroke-width', Math.max(shape.width, slop));
+      // A filled shape is solid throughout, so the band under it is filled too —
+      // invisibly — and that fill is what makes its middle answer the pointer.
+      // An unfilled one has no middle to answer with, which is the whole rule.
+      grab.setAttribute('fill', shape.fill ? 'transparent' : 'none');
+      grab.setAttribute('pointer-events', shape.fill ? 'all' : 'stroke');
+      ink.setAttribute('fill', shape.fill ? core.themed(shape.fill) : 'none');
+      ink.setAttribute('stroke', shape.fill ? 'none' : core.themed(shape.color));
+      ink.setAttribute('stroke-width', shape.fill ? 0 : shape.width);
     },
+
     // A filled shape has no stroke, so nothing spills past its box. An outlined one
     // carries half its pen width outside the path, same as a line.
     ink: (shape) => shape.fill ? 0 : shape.width / 2,
 
-    // A filled shape catches clicks anywhere inside; an outline only on its edge.
-    hit(shape, local, radius) {
-      const reach = radius + shape.width / 2;
-      if (!shape.fill) return nearEdge(shape, local, reach);
-      if (shape.type === 'rect') {
-        return local.x >= shape.x - reach && local.x <= shape.x + shape.w + reach
-            && local.y >= shape.y - reach && local.y <= shape.y + shape.h + reach;
-      }
-      const rx = shape.w / 2 || 0.01, ry = shape.h / 2 || 0.01;
-      return Math.hypot((local.x - shape.x - rx) / rx, (local.y - shape.y - ry) / ry) <= 1 + reach / Math.min(rx, ry);
-    },
     scale(shape, scaleX, scaleY) { shape.w *= scaleX; shape.h *= scaleY; },
 
     // A filled shape is solid throughout its box, so any overlap with the marquee
     // is a touch, same as a click. An unfilled one is a ring: reaching into its
-    // hollow middle without ever crossing the line is not a touch, so a marquee
-    // that never leaves that middle should not catch it — the bug this exists to
-    // fix, where a small selection floating inside a big empty rectangle dragged
-    // the rectangle in with it. The marquee still catches an outline shape it
-    // wraps entirely, since wrapping the whole ring is not staying in the hole.
+    // hollow middle without ever crossing the line is not a touch.
     within(shape, inside, marquee) {
       const box = core.boundsOf([shape]);
       if (!box) return false;
@@ -1426,7 +1630,7 @@ createMiniCanvas.plugin('item-shapes', [], function (core) {
     },
 
     svg(shape, escape) {
-      // Same rule as the canvas: a filled shape carries no stroke at all.
+      // Same rule as the renderer: a filled shape carries no stroke at all.
       const paint = shape.fill
         ? `fill="${escape(shape.fill)}" stroke="none"`
         : `fill="none" stroke="${escape(shape.color)}" stroke-width="${shape.width}"`;
@@ -1456,9 +1660,16 @@ createMiniCanvas.plugin('item-text', [], function (core) {
 
   // Width of a piece of one line. The editor needs this to place a caret, and the
   // box needs it to know how wide the widest line runs.
+  //
+  // The canvas build asked a 2D context to measure. Here the thing that lays the
+  // text out is the thing that measures it: one off-screen element, at scale 1, in
+  // the same font the item is drawn in. Measuring the item's own element instead
+  // would be wrong the moment the view is zoomed.
   const measureLine = core.measureLine = (item, text) => {
-    core.context.font = fontOf(item);
-    return core.context.measureText(text).width;
+    const ruler = core.ruler;
+    ruler.style.font = fontOf(item);
+    ruler.textContent = text;
+    return ruler.getBoundingClientRect().width;
   };
 
   // Where an index into the whole string lands: which line, and how far along it.
@@ -1487,27 +1698,32 @@ createMiniCanvas.plugin('item-text', [], function (core) {
       for (const line of lines) width = Math.max(width, measureLine(item, line));
       return { x: item.x, y: item.y, w: width, h: lines.length * lineHeight(item) };
     },
-    hit(item, local, radius) {
-      const box = core.types.text.box(item);
-      return local.x >= box.x - radius && local.x <= box.x + box.w + radius
-          && local.y >= box.y - radius && local.y <= box.y + box.h + radius;
+
+    dom() {
+      const element = document.createElement('div');
+      element.className = 'mc-text';
+      return element;
     },
+
+    update(item, element) {
+      element.style.font = fontOf(item);
+      element.style.lineHeight = lineHeight(item) + 'px';
+      element.style.color = core.themed(item.color);
+      // While the editor holds it, the element is the document: writing to it would
+      // move the caret out from under whoever is typing.
+      if (element.isContentEditable) return;
+      if (element.textContent !== String(item.text || '')) {
+        element.textContent = String(item.text || '');
+      }
+    },
+
     scale(item, scaleX, scaleY) { item.size *= (scaleX + scaleY) / 2; },
-    draw(item, context) {
-      context.textBaseline = 'top';
-      // The editor draws selected runs under the glyphs and a caret over them.
-      // Without it loaded these fire into nothing, which is the whole point.
-      core.fire('textunder', item, context);
-      context.fillStyle = core.themed(item.color);
-      context.font = fontOf(item);
-      const step = lineHeight(item);
-      linesOf(item).forEach((line, row) => context.fillText(line, item.x, item.y + row * step));
-      core.fire('textover', item, context);
-    },
+
     svg(item, escape) {
       const size = item.size || TEXT_SIZE;
-      // Canvas draws text from its top, SVG from its baseline. 0.8 of the size is
-      // the usual gap between the two, and it keeps the export dependency-free.
+      // The renderer draws text from its top, SVG from its baseline. 0.8 of the
+      // size is the usual gap between the two, and it keeps the export
+      // dependency-free.
       return `<text x="${item.x}" y="${core.round(item.y + size * 0.8)}" font-family="${FONT}"`
            + ` font-size="${size}" fill="${escape(item.color)}"`;
     },
@@ -1532,27 +1748,18 @@ createMiniCanvas.plugin('item-text', [], function (core) {
 /* item: image — how an image draws and hits. No inserting: that is editing.
    Needs: core. */
 createMiniCanvas.plugin('item-image', [], function (core) {
-  const imageCache = core.imageCache = new Map();   // src -> Image
-  function imageOf(src) {
-    let image = imageCache.get(src);
-    if (!image) {
-      image = new Image();
-      image.onload = core.requestRedraw;
-      image.src = src;
-      imageCache.set(src, image);
-    }
-    return image.complete && image.naturalWidth ? image : null;
-  }
+  core.imageCache = new Map();   // src -> Image, for whoever measures before placing
 
   core.types.image = {
-    draw(item, context) {
-      const image = imageOf(item.src);
-      if (image) context.drawImage(image, item.x, item.y, item.w, item.h);
+    dom() {
+      const element = document.createElement('img');
+      element.className = 'mc-image';
+      element.draggable = false;   // the browser's own drag would fight the board's
+      return element;
     },
-    // Solid, unlike the outline shapes: anywhere inside counts.
-    hit: (item, local, radius) =>
-      local.x >= item.x - radius && local.x <= item.x + item.w + radius &&
-      local.y >= item.y - radius && local.y <= item.y + item.h + radius,
+    update(item, element) {
+      if (element.getAttribute('src') !== item.src) element.setAttribute('src', item.src);
+    },
     scale(item, scaleX, scaleY) { item.w *= scaleX; item.h *= scaleY; },
     svg: (item, escape) =>
       `<image x="${item.x}" y="${item.y}" width="${item.w}" height="${item.h}" href="${escape(item.src)}"`
@@ -1598,6 +1805,7 @@ createMiniCanvas.plugin('tool-draw', ['item-stroke'], function (core) {
     return false;
   });
 });
+
 
 /* tool: shapes — dragging out a rectangle or an oval.
    Needs: core, item-shapes. */
@@ -1656,83 +1864,67 @@ createMiniCanvas.plugin('tool-shapes', ['item-shapes'], function (core) {
   core.on('toolleave', () => { currentShape = null; return false; });
 });
 
-/* tool: text — the editor: caret, selected runs, blink, double click to reopen.
-   The largest plugin, and the first one a read-only build leaves out.
+
+/* tool: text — the editor. In the canvas build this was the largest plugin by
+   some way: a caret, its blink, selected runs drawn behind the glyphs, arrow keys,
+   Home and End, word selection, drag selection, and a measurement pass behind all
+   of it. Every one of those is something a browser already does to a text node, so
+   here the editor is `contenteditable` and a commit path, and the rest is gone.
+   What is left is the part that is actually about this program: when an item opens,
+   where a new one grows from, and how the text gets back into the scene.
    Needs: core, item-text. Better with: select (double click to reopen). */
 createMiniCanvas.plugin('tool-text', ['item-text'], function (core) {
   const TEXT_SIZE = core.TEXT_SIZE;
 
   let editing = null;        // the text item currently taking keystrokes
-  let caret = 0;             // where the next character lands
-  let caretAnchor = 0;       // the other end of the selected run
   let textOrigin = null;     // the click a new text item stays centred on
   let lastTap = null;        // for spotting a double click
-  let selecting = false;     // a press is dragging a run out across the glyphs
-  let caretTimer = null;     // only runs while text is being typed
-  let caretOn = true;
-
-  const caretSpot = core.caretSpot;
 
   core.toolKeys.t = 'text';
 
-  // What the item renderer leaves to the editor: a selected run behind the glyphs,
-  // and a caret on top of them.
-  // A run that crosses lines is one rectangle per line, since text is not one long
-  // ribbon: each line has its own left edge to start from.
-  core.on('textunder', (item, context) => {
-    if (item !== editing || caret === caretAnchor) return false;
-    const from = Math.min(caret, caretAnchor), to = Math.max(caret, caretAnchor);
-    const step = core.lineHeight(item);
-    context.fillStyle = core.cssColor('--selection-tint', 'rgba(26, 115, 255, 0.28)');
-    let start = 0;
-    core.textLines(item).forEach((line, row) => {
-      const end = start + line.length;
-      const a = Math.max(from, start), b = Math.min(to, end);
-      if (b >= a && to > start && from <= end) {
-        const left = core.measureLine(item, line.slice(0, a - start));
-        const right = core.measureLine(item, line.slice(0, b - start));
-        // A selected line break shows as a sliver, so an empty line still reads.
-        const width = Math.max(right - left, to > end ? (item.size || TEXT_SIZE) * 0.3 : 0);
-        if (width > 0) context.fillRect(item.x + left, item.y + row * step, width, step);
-      }
-      start = end + 1;
-    });
-    return false;
-  });
+  const elementOf = core.elementOf;
 
-  core.on('textover', (item, context) => {
-    if (item !== editing || caret !== caretAnchor || !caretOn) return false;
-    const size = item.size || TEXT_SIZE;
-    const spot = caretSpot(item, caret);
-    // Wide enough to see when zoomed out, thin enough to read as a caret.
-    const thickness = Math.max(1.5 / core.scene.view.scale, size * 0.04);
-    context.fillStyle = core.themed(item.color);
-    context.fillRect(item.x + spot.x, item.y + spot.y, thickness, size);
-    return false;
-  });
-
-  // A caret that sits perfectly still reads as a stray mark on a drawing canvas.
-  // The timer lives only as long as the typing does.
-  function startCaretBlink() {
-    stopCaretBlink();
-    caretOn = true;
-    caretTimer = setInterval(() => { caretOn = !caretOn; core.requestRedraw(); }, 530);
-  }
-  function stopCaretBlink() {
-    if (caretTimer) clearInterval(caretTimer);
-    caretTimer = null;
-    caretOn = true;
+  // `plaintext-only` is the right mode and the one every browser here has had
+  // longest except Firefox, which only took it recently. Setting it and then
+  // asking whether it stuck costs one line and leaves the older answer working:
+  // paste is filtered to plain text below either way, and the text is read back
+  // with innerText, which flattens whatever markup a stray rich paste left.
+  function makeEditable(element) {
+    element.setAttribute('contenteditable', 'plaintext-only');
+    if (!element.isContentEditable) element.setAttribute('contenteditable', 'true');
+    element.classList.add('mc-editing');
+    element.focus({ preventScroll: true });
   }
 
-  // Text is committed by any click, tool change, or Escape. An empty one leaves
-  // nothing behind, and gives back the undo step it took.
+  // The element is the document while it is open, so this is the one place the
+  // typing gets read back out. A contenteditable div reports line breaks as <br>
+  // and, in some browsers, as nested divs; innerText resolves both to the newlines
+  // the format stores.
+  function readBack() {
+    if (!editing) return;
+    const element = elementOf(editing);
+    if (!element) return;
+    const text = element.innerText.replace(/\r\n?/g, '\n').replace(/\n$/, '');
+    if (text === editing.text) return;
+    editing.text = text;
+    core.changed();
+    recentreText();
+  }
+
+  // Text is committed by any click elsewhere, a tool change, or Escape. An empty
+  // one leaves nothing behind, and gives back the undo step it took.
   function commitText() {
     if (!editing) return;
     const item = editing;
+    readBack();
+    const element = elementOf(item);
     editing = null;
     textOrigin = null;
-    selecting = false;
-    stopCaretBlink();
+    if (element) {
+      element.removeAttribute('contenteditable');
+      element.classList.remove('mc-editing');
+      element.blur();
+    }
     if (!item.text) {
       const index = core.scene.items.indexOf(item);
       if (index >= 0) core.scene.items.splice(index, 1);
@@ -1745,27 +1937,49 @@ createMiniCanvas.plugin('tool-text', ['item-text'], function (core) {
   // Opening an item selects the whole string, the way double-clicking a field does
   // anywhere else: type to replace it, or press an arrow to drop the caret at that
   // end and keep what is there.
-  function startEditing(item) {
+  function startEditing(item, atPoint) {
     commitText();
     editing = item;
-    caretAnchor = 0;
-    caret = (item.text || '').length;
     textOrigin = null;   // an existing item keeps its position and grows rightward
-    selecting = false;
     // The double click that opened the editor is spent. Without this the next
     // press would read as the second half of it and take a word when it meant to
     // put the caret down.
     lastTap = null;
-    startCaretBlink();
+    const element = elementOf(item);
+    if (!element) { editing = null; return; }
+    makeEditable(element);
+    if (atPoint) placeCaretAt(element, atPoint);
+    else selectAll(element);
     core.requestRedraw();
   }
 
-  function replaceRange(insert) {
-    const text = editing.text || '';
-    const from = Math.min(caret, caretAnchor), to = Math.max(caret, caretAnchor);
-    editing.text = text.slice(0, from) + insert + text.slice(to);
-    caret = caretAnchor = from + insert.length;
-    recentreText();
+  function selectAll(element) {
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+  }
+
+  // Where the press landed, in the browser's own terms. caretRangeFromPoint is the
+  // old spelling and caretPositionFromPoint the current one; between them every
+  // browser this page runs on answers.
+  function placeCaretAt(element, screen) {
+    const selection = window.getSelection();
+    let range = null;
+    if (document.caretRangeFromPoint) {
+      range = document.caretRangeFromPoint(screen.x, screen.y);
+    } else if (document.caretPositionFromPoint) {
+      const spot = document.caretPositionFromPoint(screen.x, screen.y);
+      if (spot) {
+        range = document.createRange();
+        range.setStart(spot.offsetNode, spot.offset);
+      }
+    }
+    if (!range || !element.contains(range.startContainer)) return selectAll(element);
+    range.collapse(true);
+    selection.removeAllRanges();
+    selection.addRange(range);
   }
 
   // A new text item grows out from the point you clicked rather than away from it.
@@ -1776,112 +1990,31 @@ createMiniCanvas.plugin('tool-text', ['item-text'], function (core) {
     editing.y = core.round(textOrigin.y - box.h / 2);
   }
 
-  // Which gap between letters a click landed nearest: the row first, then the gap
-  // along that row.
-  function caretIndexAt(item, world) {
-    const local = core.toLocal(item, world);
-    const lines = core.textLines(item);
-    const row = Math.max(0, Math.min(lines.length - 1,
-      Math.floor((local.y - item.y) / core.lineHeight(item))));
-    const line = lines[row];
-    let best = 0, shortest = Infinity;
-    for (let i = 0; i <= line.length; i++) {
-      const gap = Math.abs(item.x + core.measureLine(item, line.slice(0, i)) - local.x);
-      if (gap < shortest) { shortest = gap; best = i; }
-    }
-    return core.caretIndex(item, row, best);
-  }
-
-  // What a double click takes. A run of letters and digits if the caret is inside
-  // or against one, and otherwise a run of whatever else is there, so a double
-  // click on the space between two words takes the space rather than nothing.
-  // A line break belongs to neither and stops both.
-  const WORD = /[\p{L}\p{N}_]/u;
-  function kindOf(text, index) {
-    const character = text[index];
-    if (character === undefined || character === '\n') return null;
-    if (WORD.test(character)) return 'word';
-    return character === ' ' || character === '\t' ? 'space' : 'mark';
-  }
-
-  function wordAt(text, at) {
-    const kind = kindOf(text, at) === 'word' ? 'word'
-      : kindOf(text, at - 1) === 'word' ? 'word' : kindOf(text, at);
-    if (!kind) return { from: at, to: at };   // pressed at the end of a line
-    let from = at, to = at;
-    while (kindOf(text, from - 1) === kind) from -= 1;
-    while (kindOf(text, to) === kind) to += 1;
-    return { from: from, to: to };
-  }
-
-  const pressingText = (world) =>
-    core.scene.items[core.itemIndexAt(world, core.GRAB_SLOP / core.scene.view.scale)] === editing;
-
   function isSecondTap(item, screenPoint) {
     const now = Date.now();
-    const again = lastTap && lastTap.item === item && now - lastTap.time < 400
-      && Math.hypot(lastTap.x - screenPoint.x, lastTap.y - screenPoint.y) < 10;
-    lastTap = { item: item, time: now, x: screenPoint.x, y: screenPoint.y };
-    return again;
+    const near = lastTap && lastTap.item === item && now - lastTap.at < 400
+      && Math.hypot(lastTap.x - screenPoint.x, lastTap.y - screenPoint.y) < 6;
+    lastTap = { item: item, at: now, x: screenPoint.x, y: screenPoint.y };
+    return near;
   }
 
-  // Select offers each item to this before taking it, so a second click opens the
-  // editor rather than reselecting.
+  // The select tool offers each press to whoever wants it before selecting. A
+  // second click on a text item opens it instead of picking it up again.
   core.on('claim', (item, at) => {
-    if (item.type !== 'text' || !isSecondTap(item, at.screenPoint)) return false;
+    if (item.type !== 'text' || core.tool !== 'select') return false;
+    if (!isSecondTap(item, at.screenPoint)) return false;
     startEditing(item);
     return true;
   });
 
-  // A click inside the text you are typing puts the caret there instead of
-  // finishing, so the select-everything opening is easy to step back from. A
-  // second click takes the word under it, and holding on from either drags a run
-  // out across the glyphs — a text field, in other words, since that is what this
-  // is while the editor is open.
+  // While the editor is open the element owns the pointer, so a press inside it is
+  // the browser's business: caret placement, double click to take a word, drag to
+  // pull a run out. All of it is native, and none of it is written here.
   core.on('pointerdown', (event, at) => {
     if (!editing || core.spaceHeld || core.tool === 'pan') return false;
-    if (!pressingText(at.world)) return false;
-    const index = caretIndexAt(editing, at.world);
-    if (isSecondTap(editing, at.screenPoint)) {
-      const word = wordAt(editing.text || '', index);
-      caretAnchor = word.from;
-      caret = word.to;
-      selecting = false;              // the word is the whole gesture
-    } else {
-      caret = caretAnchor = index;
-      selecting = true;               // from here to wherever the press lets go
-    }
-    startCaretBlink();
-    core.requestRedraw();
-    return true;
-  }, 10);
-
-  // Dragging moves the far end of the run and leaves the anchor where it was
-  // pressed, so a drag back past the start selects the other way round.
-  core.on('pointermove', (event, at) => {
-    if (!selecting || !editing) return false;
-    const index = caretIndexAt(editing, at.world);
-    if (index === caret) return true;
-    caret = index;
-    caretOn = true;                   // solid while a run is being drawn out
-    core.requestRedraw();
-    return true;
-  }, 10);
-
-  core.on('pointerup', () => {
-    if (!selecting) return false;
-    selecting = false;
-    startCaretBlink();
-    return false;                     // a release is news everyone else can have
-  }, 10);
-
-  // The pointer over the text being edited is a text cursor, which is the only
-  // hint that dragging across it selects rather than moves it.
-  core.on('hover', (event, at) => {
-    if (!editing || !at || core.spaceHeld || core.tool === 'pan') return false;
-    if (!pressingText(at.world)) return false;
-    core.canvas.style.cursor = 'text';
-    return true;
+    const element = elementOf(editing);
+    if (!element || !element.contains(event.target)) return false;
+    return true;   // hands off: the press already reached the text
   }, 10);
 
   core.on('pointerdown', () => { commitText(); return false; }, 20);
@@ -1889,90 +2022,67 @@ createMiniCanvas.plugin('tool-text', ['item-text'], function (core) {
   core.on('pointerdown', (event, at) => {
     if (core.tool !== 'text') return false;
     core.remember();
-    editing = core.applyPen({ type: 'text', color: core.strokeColor, size: TEXT_SIZE,
-                              x: core.round(at.world.x), y: core.round(at.world.y), text: '' });
-    caret = caretAnchor = 0;
+    const item = core.applyPen({ type: 'text', color: core.strokeColor, size: TEXT_SIZE,
+                                 x: core.round(at.world.x), y: core.round(at.world.y), text: '' });
+    core.scene.items.push(item);
     textOrigin = { x: at.world.x, y: at.world.y };   // it grows out from here, not below it
-    core.scene.items.push(editing);
-    recentreText();
-    startCaretBlink();
+    core.requestRedraw();
+    editing = item;
+    // Taking the default away is what lets the focus stick: the browser moves
+    // focus itself as part of handling a press, and would take it straight back
+    // off an element focused during one. It has to happen now rather than next
+    // frame, because the first keystroke can arrive before the next frame does —
+    // which cost the first letter of every new text item until it did.
+    event.preventDefault();
+    const element = elementOf(item);
+    if (element) makeEditable(element);
     // Hand back the select tool right away. Typing keeps working, because the
     // keyboard belongs to the caret while one is live, and the next click can go
     // straight to another item instead of needing Escape first.
     core.setTool('select', true);
-    core.requestRedraw();
     return true;
   }, 90);
 
   core.on('toolleave', (name, keepTyping) => { if (!keepTyping) commitText(); return false; });
-  core.on('load', () => { editing = null; stopCaretBlink(); return false; });
-  core.on('historystep', () => { editing = null; stopCaretBlink(); return false; });
+  core.on('load', () => { editing = null; textOrigin = null; return false; });
+  core.on('historystep', () => { editing = null; textOrigin = null; return false; });
   core.on('beforeexport', () => { commitText(); return false; });
 
-  // While text is being typed the canvas is a text field: every key belongs to it.
+  // Every key while the editor is open belongs to the text, and the element is
+  // already receiving them. Escape is the way out; everything else is the browser's,
+  // and the item is re-read after each one so the scene keeps up with the typing.
   core.on('typing', (event) => {
     if (!editing) return false;
-    const text = editing.text || '';
-    const key = event.key;
+    if (event.key === 'Escape') {
+      commitText();
+      event.preventDefault();
+      return true;
+    }
+    // Selecting, copying, cutting and pasting are the browser's while a caret is
+    // live. Anything else held down — undo above all — is not about the text, and
+    // has to reach the plugin that owns it.
     const held = event.ctrlKey || event.metaKey;
-    // Enter makes a new line. Escape, a click elsewhere, or a tool change commits.
-    if (key === 'Escape') commitText();
-    else if (key === 'Enter') replaceRange('\n');
-    else if (key === 'ArrowLeft' || key === 'ArrowRight') {
-      const step = key === 'ArrowLeft' ? -1 : 1;
-      if (!event.shiftKey && caret !== caretAnchor) {
-        // An arrow with a run selected collapses to its edge rather than moving.
-        caret = step < 0 ? Math.min(caret, caretAnchor) : Math.max(caret, caretAnchor);
-      } else {
-        caret = Math.max(0, Math.min(text.length, caret + step));
-      }
-      if (!event.shiftKey) caretAnchor = caret;
-    }
-    else if (key === 'ArrowUp' || key === 'ArrowDown') {
-      // Up and down move between lines, keeping the column where it can.
-      const spot = core.caretSpot(editing, caret);
-      const rows = core.textLines(editing).length;
-      const row = spot.row + (key === 'ArrowUp' ? -1 : 1);
-      caret = row < 0 ? 0 : row >= rows ? text.length : core.caretIndex(editing, row, spot.column);
-      if (!event.shiftKey) caretAnchor = caret;
-    }
-    else if (key === 'Home' || key === 'End') {
-      const spot = core.caretSpot(editing, caret);
-      const line = core.textLines(editing)[spot.row];
-      caret = core.caretIndex(editing, spot.row, key === 'Home' ? 0 : line.length);
-      if (!event.shiftKey) caretAnchor = caret;
-    }
-    else if (held && key.toLowerCase() === 'a') { caretAnchor = 0; caret = text.length; }
-    else if (key === 'Backspace') {
-      if (caret !== caretAnchor) replaceRange('');
-      else if (caret > 0) { caret -= 1; caretAnchor = caret; editing.text = text.slice(0, caret) + text.slice(caret + 1); recentreText(); }
-    }
-    else if (key === 'Delete') {
-      if (caret !== caretAnchor) replaceRange('');
-      else if (caret < text.length) { editing.text = text.slice(0, caret) + text.slice(caret + 1); recentreText(); }
-    }
-    else if (key.length === 1 && !held) replaceRange(key);
-    else return false;
-    if (editing) startCaretBlink();   // solid while you type, blinking once you stop
-    event.preventDefault();
-    core.requestRedraw();
+    if (held && 'acvx'.indexOf((event.key || '').toLowerCase()) < 0) return false;
+    // Claimed either way: without this an arrow key would nudge the selection and
+    // a letter would switch tools, both while somebody is typing.
+    // Read back after the keystroke has landed in the element, not before.
+    requestAnimationFrame(() => { readBack(); core.requestRedraw(); });
     return true;
   });
 
-  // The clipboard plugin asks before reaching for the scene, so copy and paste
-  // work on the run of text when there is one.
-  core.on('copytext', (payload) => {
-    if (!editing) return false;
-    const run = (editing.text || '').slice(Math.min(caret, caretAnchor), Math.max(caret, caretAnchor));
-    if (!run) return true;   // a live caret with nothing selected copies nothing
-    payload.text = run;
-    return true;
-  });
+  // The clipboard plugin asks before reaching for the scene, so copy and paste work
+  // on the run of text when there is one. Both are the browser's by then: the
+  // element is focused and its own default handling is the right one.
+  // Copy: claimed, but with nothing in the payload, which is the clipboard
+  // plugin's signal to stand back and let the element's own copy happen.
+  core.on('copytext', () => !!editing);
 
+  // Paste: claimed, so the scene does not get a new text item, and inserted here
+  // as plain text so a paste from a web page arrives as words rather than markup.
   core.on('pastetext', (payload) => {
-    if (!editing || !payload.text) return false;
-    replaceRange(payload.text.replace(/\r\n?/g, '\n'));   // line breaks survive the trip
-    core.requestRedraw();
+    if (!editing) return false;
+    if (payload.text) document.execCommand('insertText', false, payload.text);
+    requestAnimationFrame(() => { readBack(); core.requestRedraw(); });
     return true;
   });
 });
@@ -2002,6 +2112,7 @@ createMiniCanvas.plugin('tool-image', ['item-image'], function (core) {
     image.src = src;
   };
 });
+
 
 /* select — the selection itself: clicking, box-selecting, dragging, deleting, and
    the frame drawn around it. Everything that acts on a selection depends on this.
@@ -2276,70 +2387,86 @@ createMiniCanvas.plugin('select', [], function (core) {
     return false;
   });
 
+  // The overlay is elements, not paint, so the pieces are pooled rather than
+  // redrawn: a frame that was there last frame is still there, moved. Handing out
+  // a node per shape per frame and letting the browser reconcile the difference is
+  // the whole rendering strategy in miniature.
+  const pool = [];
+  let taken = 0;
+  function piece(className) {
+    let node = pool[taken];
+    if (!node) {
+      node = document.createElement('div');
+      pool[taken] = node;
+      core.overlay.appendChild(node);
+    }
+    taken++;
+    node.className = className;
+    // A node keeps nothing from the piece it was last frame: the frame writes
+    // its size and rotation inline, and a handle's stylesheet leaves those
+    // alone, so a stale one would turn a nine-pixel handle into a leftover box.
+    // Clearing here also lifts the display:none of a node that sat out a frame.
+    node.style.cssText = '';
+    return node;
+  }
+
+  // A world box, placed in the overlay's screen space and turned about its own
+  // centre. Laying it out upright and rotating the element afterwards is the same
+  // trick the canvas build played with the context, and it means handles inside a
+  // frame need no per-corner trigonometry either.
+  function placeFrame(node, frame) {
+    const scale = core.scene.view.scale;
+    const at = core.toScreen({ x: frame.box.x, y: frame.box.y });
+    node.style.left = at.x + 'px';
+    node.style.top = at.y + 'px';
+    node.style.width = (frame.box.w * scale) + 'px';
+    node.style.height = (frame.box.h * scale) + 'px';
+    node.style.transform = frame.angle ? 'rotate(' + frame.angle + 'deg)' : '';
+    return node;
+  }
+
   core.on('overlay', () => {
-    if (!selection.size && !marquee && !hovered) return false;
-    const context = core.context;
-    const unit = 1 / core.scene.view.scale;   // a screen pixel, whatever the zoom
-    context.save();
-    context.strokeStyle = core.cssColor('--selection', '#1a73ff');
-    context.fillStyle = core.cssColor('--handle-fill', '#ffffff');
-    context.lineWidth = 1.5 * unit;
-
-    // Turning the canvas means a frame and its handles are laid out upright and
-    // land rotated, with no per-corner trigonometry.
-    const inFrameSpace = (frame, draw) => {
-      context.save();
-      if (frame.angle) {
-        context.translate(frame.center.x, frame.center.y);
-        context.rotate(core.radiansOf(frame.angle));
-        context.translate(-frame.center.x, -frame.center.y);
+    taken = 0;
+    if (selection.size || marquee || hovered) {
+      // What the cursor is over gets the outline and nothing else: handles would
+      // invite a drag that hovering has not earned. It is the same frame the click
+      // would land in, turned item and all, so the box always promises what the
+      // press will actually take.
+      if (hovered) {
+        const frame = core.frameOf(core.membersOf(hovered));
+        if (frame) placeFrame(piece('mc-frame mc-hovered'), frame);
       }
-      draw();
-      context.restore();
-    };
-    const outline = (frame) => inFrameSpace(frame,
-      () => context.strokeRect(frame.box.x, frame.box.y, frame.box.w, frame.box.h));
 
-    // What the cursor is over gets the outline and nothing else: handles would
-    // invite a drag that hovering has not earned. It is the same frame the click
-    // would land in, turned item and all, so the box always promises what the
-    // press will actually take.
-    if (hovered) {
-      const frame = core.frameOf(core.membersOf(hovered));
+      // A solid grey box, filled: it is a region being swept rather than a thing
+      // that has been chosen, so it stays out of the selection's colour entirely
+      // and lets the blue outlines inside it do the talking.
+      if (marquee) {
+        placeFrame(piece('mc-marquee'), { box: normalised(marquee), angle: 0 });
+        // What letting go would take, outlined exactly as a settled selection is.
+        // Handles are left off: they belong to a selection you can already act on,
+        // and this one does not exist yet.
+        for (const item of marqueePreview) {
+          const own = core.frameOf([item]);
+          if (own) placeFrame(piece('mc-frame'), own);
+        }
+      }
+
+      // Several loose items each get their own outline. A group gets one, because
+      // a group is one thing until you take it apart.
+      if (selection.size > 1 && !(core.selectionIsOneGroup && core.selectionIsOneGroup())) {
+        for (const item of selection) {
+          const own = core.frameOf([item]);
+          if (own) placeFrame(piece('mc-frame'), own);
+        }
+      }
+
+      const frame = core.selectionFrame();
       if (frame) {
-        context.globalAlpha = 0.6;
-        outline(frame);
-        context.globalAlpha = 1;
+        placeFrame(piece('mc-frame'), frame);
+        core.fire('handles', frame, piece);
       }
     }
-
-    if (marquee) {                       // solid grey: a region being swept, not
-      const box = normalised(marquee);   // a settled selection
-      context.fillStyle = core.cssColor('--marquee-fill', 'rgba(120,120,116,.12)');
-      context.fillRect(box.x, box.y, box.w, box.h);
-      context.strokeStyle = core.cssColor('--marquee', '#a8a8a4');
-      context.strokeRect(box.x, box.y, box.w, box.h);
-      // What letting go would take — blue like a settled selection, no handles.
-      context.strokeStyle = core.cssColor('--selection', '#1a73ff');
-      for (const item of marqueePreview) {
-        const own = core.frameOf([item]);
-        if (own) outline(own);
-      }
-    }
-    // Several loose items each get their own outline. A group gets one, because a
-    // group is one thing until you take it apart.
-    if (selection.size > 1 && !(core.selectionIsOneGroup && core.selectionIsOneGroup())) {
-      for (const item of selection) {
-        const own = core.frameOf([item]);
-        if (own) outline(own);
-      }
-    }
-    const frame = core.selectionFrame();
-    if (frame) inFrameSpace(frame, () => {
-      context.strokeRect(frame.box.x, frame.box.y, frame.box.w, frame.box.h);
-      core.fire('handles', frame, context);
-    });
-    context.restore();
+    for (let i = taken; i < pool.length; i++) pool[i].style.display = 'none';
     return false;
   });
 
@@ -2378,6 +2505,7 @@ createMiniCanvas.plugin('select', [], function (core) {
     deleteSelection: deleteSelection
   });
 });
+
 
 /* transform — the handles on a selection: four corners to resize, four edges to
    stretch one axis, one stalk to rotate. All of them work in the frame's own
@@ -2661,7 +2789,7 @@ createMiniCanvas.plugin('transform', ['select'], function (core) {
     const frame = (at && core.tool === 'select' && core.handlesAnswer(at.world))
       ? core.selectionFrame() : null;
     const handle = frame && handleAt(core.toFrame(at.world, frame), frame);
-    if (handle) core.canvas.style.cursor = resizeCursor(handle, frame.angle);
+    if (handle) core.host.style.cursor = resizeCursor(handle, frame.angle);
     else core.applyCursor();
     return false;
   }, 20);
@@ -2681,24 +2809,47 @@ createMiniCanvas.plugin('transform', ['select'], function (core) {
   });
   core.on('toolleave', () => { resize = rotation = null; return false; });
 
-  core.on('handles', (frame, context) => {
-    const size = core.HANDLE_SIZE / core.scene.view.scale;
+  // Handles are elements too, from the same pool the frame came from. They are
+  // placed in the frame's own upright space and land rotated with it, which is
+  // why nothing here does any trigonometry: `piece` hands out a node, the frame
+  // element it sits in is already turned.
+  core.on('handles', (frame, piece) => {
+    const scale = core.scene.view.scale;
+    const at = (point) => {
+      const screen = core.toScreen(point);
+      return { left: screen.x + 'px', top: screen.y + 'px' };
+    };
+    // The corner squares sit in screen space like the frame does, each turned
+    // about the frame's centre so a tilted selection keeps square handles.
+    const spin = (point) => frame.angle
+      ? core.spinPoint(point, frame.center, frame.angle) : point;
+
     for (const corner of handleCorners(frame.box, frame.content)) {
-      context.fillRect(corner.x - size / 2, corner.y - size / 2, size, size);
-      context.strokeRect(corner.x - size / 2, corner.y - size / 2, size, size);
+      const node = piece('mc-handle');
+      const spot = at(spin(corner));
+      node.style.left = spot.left;
+      node.style.top = spot.top;
+      node.style.transform = '';
     }
     const spinner = rotationHandle(frame.box);   // a stalk above the box, so it never
-    context.beginPath();                         // sits on top of the work itself
-    context.moveTo(frame.box.x + frame.box.w / 2, frame.box.y);
-    context.lineTo(spinner.x, spinner.y);
-    context.stroke();
-    context.beginPath();
-    context.arc(spinner.x, spinner.y, size / 2, 0, Math.PI * 2);
-    context.fill();
-    context.stroke();
+    const top = { x: frame.box.x + frame.box.w / 2, y: frame.box.y };   // sits on the work
+    // Hung from the knob rather than standing on the box, so it can be turned
+    // about its own top end: both ends move rigidly with the frame, so the line
+    // between them turns by exactly the frame's own angle.
+    const knobAt = at(spin(spinner));
+    const stalk = piece('mc-stalk');
+    stalk.style.left = knobAt.left;
+    stalk.style.top = knobAt.top;
+    stalk.style.height = (Math.hypot(spinner.x - top.x, spinner.y - top.y) * scale) + 'px';
+    stalk.style.transform = 'rotate(' + (frame.angle || 0) + 'deg)';
+    const knob = piece('mc-knob');
+    knob.style.left = knobAt.left;
+    knob.style.top = knobAt.top;
     return false;
   });
+
 });
+
 
 /* groups — a shared name on a set of items, so they select and move as one.
    Needs: core, select. */
@@ -2759,6 +2910,7 @@ createMiniCanvas.plugin('groups', ['select'], function (core) {
   // So a toolbar can show whether the button will group or ungroup.
   core.api.isGrouped = () => core.selectionIsOneGroup();
 });
+
 
 /* arrange — lining things up and stacking them: alt+wasd to align, alt+v and
    alt+h to centre, brackets for layer order.
@@ -2871,6 +3023,7 @@ createMiniCanvas.plugin('arrange', ['select'], function (core) {
   Object.assign(core.api, { align: alignSelection, center: centerSelection, reorder: reorder });
 });
 
+
 /* erase — remove whatever is under the cursor, and only what is visible there.
    Needs: core. */
 createMiniCanvas.plugin('erase', [], function (core) {
@@ -2899,6 +3052,7 @@ createMiniCanvas.plugin('erase', [], function (core) {
     return true;
   }, 40);
 });
+
 
 /* history — undo and redo. Nothing else knows it exists: the core's remember and
    forget do nothing until this replaces them.
@@ -2955,6 +3109,7 @@ createMiniCanvas.plugin('history', [], function (core) {
 
   Object.assign(core.api, { undo: undo, redo: redo });
 });
+
 
 /* clipboard — copy, paste, and option-drag to duplicate. The copy buffer is a
    scene fragment in the same format as the file, so it travels anywhere text does.
@@ -3059,6 +3214,7 @@ createMiniCanvas.plugin('clipboard', ['select'], function (core) {
   });
 });
 
+
 /* export — SVG for the archive, PNG for a picture. Both carry the document's own
    colours rather than whatever the current theme shows.
    Needs: core. */
@@ -3075,10 +3231,9 @@ createMiniCanvas.plugin('export', [], function (core) {
 
   // The archival exit: any browser, image viewer, or printer from now to 2125
   // can open the result without a line of JavaScript.
-  function toSVG() {
-    core.fire('beforeexport');
-    const box = core.boundsOf(core.scene.items) || { x: 0, y: 0, w: 100, h: 100 };
-    const body = core.scene.items.map((item) => {
+  function svgFor(items) {
+    const box = core.boundsOf(items) || { x: 0, y: 0, w: 100, h: 100 };
+    const body = items.map((item) => {
       const type = core.types[item.type];
       if (!type || !type.svg) return '';
       const open = type.svg(item, escapeXml) + spinAttribute(item);
@@ -3091,29 +3246,51 @@ createMiniCanvas.plugin('export', [], function (core) {
          + ` ${box.w + pad * 2} ${box.h + pad * 2}">\n  ${body}\n</svg>`;
   }
 
-  // Renders straight to an offscreen canvas by pointing the same draw code at a
-  // different context. Pass the items to include, or nothing for the whole scene.
+  function toSVG() {
+    core.fire('beforeexport');
+    core.exporting = true;
+    const markup = svgFor(core.scene.items);
+    core.exporting = false;
+    return markup;
+  }
+
+  // PNG is the one thing the browser will not do from elements. The canvas build
+  // rendered a second time into an offscreen context; there is no second renderer
+  // here, so the SVG above is drawn into an image and the image into a canvas.
+  // That is a canvas as an encoder rather than as a renderer: it is handed a
+  // finished picture and asked for bytes, and nothing about how the board draws
+  // goes through it.
+  //
+  // Which makes it asynchronous, where the canvas build's was not: an image has to
+  // load before anything can be read back out of it.
   function toPNG(items, pixelRatio) {
     core.fire('beforeexport');
     const list = (items && items.length) ? items : core.scene.items;
     const box = core.boundsOf(list);
-    if (!box) return null;
+    if (!box) return Promise.resolve(null);
     const ratio = pixelRatio || 2;
     const pad = 8;
-    const output = document.createElement('canvas');
-    output.width = Math.max(1, Math.ceil((box.w + pad * 2) * ratio));
-    output.height = Math.max(1, Math.ceil((box.h + pad * 2) * ratio));
-    const onscreen = core.context;
-    core.context = output.getContext('2d');
     core.exporting = true;   // the document's own colours, not the ones the theme shows
-    core.context.setTransform(ratio, 0, 0, ratio, 0, 0);
-    core.context.fillStyle = '#ffffff';   // an exported picture carries its own paper
-    core.context.fillRect(0, 0, output.width, output.height);
-    core.context.translate(pad - box.x, pad - box.y);
-    for (const item of list) core.drawItem(item);
+    const markup = svgFor(list);
     core.exporting = false;
-    core.context = onscreen;
-    return output;
+
+    return new Promise((resolve, reject) => {
+      const picture = new Image();
+      picture.onload = () => {
+        const output = document.createElement('canvas');
+        output.width = Math.max(1, Math.ceil((box.w + pad * 2) * ratio));
+        output.height = Math.max(1, Math.ceil((box.h + pad * 2) * ratio));
+        const context = output.getContext('2d');
+        context.fillStyle = '#ffffff';   // an exported picture carries its own paper
+        context.fillRect(0, 0, output.width, output.height);
+        context.drawImage(picture, 0, 0, output.width, output.height);
+        resolve(output);
+      };
+      picture.onerror = () => reject(new Error('minicanvas: the scene would not render to an image'));
+      // A data URI rather than a blob URL: a blob URL is same-origin, and an SVG
+      // loaded from one still taints the canvas in some browsers.
+      picture.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(markup);
+    });
   }
 
   Object.assign(core.api, { toSVG: toSVG, toPNG: toPNG });
@@ -3319,6 +3496,10 @@ createMiniCanvas.plugin('export', [], function (core) {
       .forEach((selector) => at(selector).setAttribute('hidden', ''));
     at('#doc-list').textContent = '';
     at('#search-list').textContent = '';
+    // The board's own layers are a rendering of the scene, not part of the page.
+    // Left in, they would ship as dead markup and the copy would draw everything
+    // twice: once as the corpse, once as the scene it renders on load.
+    at('#board').textContent = '';
     at('#doc-button').removeAttribute('hidden');
     at('#doc-button').setAttribute('aria-expanded', 'false');
     at('#download').setAttribute('aria-expanded', 'false');
@@ -3414,16 +3595,17 @@ createMiniCanvas.plugin('export', [], function (core) {
   window.addEventListener('keydown', (event) => { if (event.key === 'Escape') showMenu(false); });
 
   // Exports the selection, or the whole scene when nothing is selected.
+  // Asynchronous here, unlike the canvas build: a PNG is made by drawing the SVG
+  // export into an image, and an image has to load first.
   document.getElementById('png').onclick = () => {
-    const rendered = board.toPNG(board.selection(), 2);
-    if (!rendered) { alert('Nothing to export yet.'); return; }
-    try {
+    board.toPNG(board.selection(), 2).then((rendered) => {
+      if (!rendered) { alert('Nothing to export yet.'); return; }
       rendered.toBlob((blob) => download(blob, 'canvas.png'), 'image/png');
-    } catch (error) {
+    }).catch(() => {
       // A canvas holding an image from another origin cannot be read back out.
       alert('This scene has an image from another site, which browsers refuse to export. '
           + 'Paste or drop the image in instead of linking it.');
-    }
+    });
   };
 
   // Images: file picker, paste, or drop. Each becomes a data URL so the scene
@@ -4011,4 +4193,5 @@ createMiniCanvas.plugin('export', [], function (core) {
   window.addEventListener('keyup', saveToolbar);   // ⌘. and the letter shortcuts
 })();
 </script>
+
 </html>
