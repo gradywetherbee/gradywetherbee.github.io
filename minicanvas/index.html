@@ -44,6 +44,10 @@
     --pen-green: #2e8b57;                    --pen-green: oklch(0.55 0.12 155);
     --pen-blue: #1f6feb;                     --pen-blue: oklch(0.56 0.19 258);
     --pen-violet: #6b4de6;                   --pen-violet: oklch(0.53 0.22 285);
+    /* Not a colour, but it travels the same road: a number the renderer reads out
+       of the stylesheet at draw time, so the theme decides how bright a photograph
+       burns on dark paper and the canvas code holds no opinion of its own. */
+    --image-brightness: 1;
   }
   @media (prefers-color-scheme: dark) {
     :root {
@@ -65,6 +69,7 @@
       --pen-green: #74c79a;                    --pen-green: oklch(0.78 0.12 155);
       --pen-blue: #85b3ff;                     --pen-blue: oklch(0.76 0.14 258);
       --pen-violet: #b4a3ff;                   --pen-violet: oklch(0.76 0.15 285);
+      --image-brightness: 0.4;
     }
   }
 
@@ -1706,7 +1711,15 @@ createMiniCanvas.plugin('item-image', [], function (core) {
   core.types.image = {
     draw(item, context) {
       const image = imageOf(item.src);
-      if (image) context.drawImage(image, item.x, item.y, item.w, item.h);
+      if (!image) return;
+      // A photograph is the one thing on the canvas the theme cannot re-colour, and
+      // a lit window on dark paper is the brightest thing in the room. So it is
+      // dimmed instead, by a number read out of the stylesheet the same way the pen
+      // colours are. An export carries the picture as it is: the file is not dark.
+      const lit = core.exporting ? '1' : core.cssColor('--image-brightness', '1');
+      if (lit !== '1') context.filter = 'brightness(' + lit + ')';
+      context.drawImage(image, item.x, item.y, item.w, item.h);
+      context.filter = 'none';
     },
     // Solid, unlike the outline shapes: anywhere inside counts.
     hit: (item, local, radius) =>

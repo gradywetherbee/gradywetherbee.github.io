@@ -711,11 +711,20 @@ live.
   theme decides what that looks like, not what it is.
 - A colour outside the six pens is drawn exactly as written. Hand-edit a scene to
   `#123456` and you get `#123456`, dark mode or not.
+- **Images are dimmed to 0.3 brightness on dark paper.** A photograph is the one
+  thing on the canvas the theme cannot re-colour, and a lit window at full
+  brightness on a dark page is the brightest thing in the room. The dim is a
+  `--image-brightness` variable — not a colour, but read out of the stylesheet at
+  draw time by exactly the same road the pens take, so the number lives with the
+  theme and the renderer holds no opinion about it. It reaches the canvas as
+  `context.filter`, which a browser too old to know the property simply ignores,
+  leaving an undimmed picture rather than a broken one.
 - Switching the system theme repaints without touching the scene, through a
   `matchMedia` listener that clears the resolved-colour cache.
 - **Exports carry the document's colours, not the theme's.** A PNG made in dark mode
   is the same PNG made in light mode, and it paints its own white paper so it is
-  never light ink on transparent nothing. The SVG export does the same.
+  never light ink on transparent nothing. The SVG export does the same, and neither
+  dims an image: the file is not dark, only the screen was.
 - Embedding the primitive without the stylesheet is fine: unresolvable variables
   fall back to the stored colour.
 
@@ -1208,6 +1217,8 @@ Deliberately absent, with the trigger that would justify adding each:
   the string, so the caret, the arrows, a click, and a selected run all work on
   what the reader sees rather than on newlines. An item with no `w` is unchanged,
   which is every file written until now.
+- Images draw at 0.3 brightness in dark mode, from a `--image-brightness` variable
+  the renderer reads the way it reads the pens. Exports are untouched.
 
 Fixed along the way: the document rows took the scene panel's `.row` class with
 them, and its top border drew a box around every one; and the toolbar showed the
