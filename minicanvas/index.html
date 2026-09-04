@@ -4209,16 +4209,23 @@ createMiniCanvas.plugin('export', [], function (core) {
   // An empty box is not an empty answer. Every pinned view in every document is
   // the list of places worth going, which is the question a search box open on
   // nothing is really asking.
-  function allPinned() {
+  // An empty box is not an empty answer. Every pinned view and then every document,
+  // most recently opened first, which is the question a search box open on nothing
+  // is really asking: where would you like to go. Views come first because they are
+  // the more particular answer — a place inside a document rather than the whole of
+  // it — and because a document is one row away in the switcher anyway.
+  function everywhere() {
     if (stale) buildIndex();
     const when = (entry) => { const doc = docById(entry.docId); return (doc && doc.used) || 0; };
-    return entries.filter((entry) => entry.kind === 'view').sort((a, b) => when(b) - when(a));
+    const kind = (name) => entries.filter((entry) => entry.kind === name)
+      .sort((a, b) => when(b) - when(a));
+    return kind('view').concat(kind('name'));
   }
 
   function paintResults() {
     const tokens = searchField.value.toLowerCase().split(/\s+/).filter(Boolean);
     searchList.textContent = '';
-    const found = tokens.length ? search(searchField.value) : allPinned();
+    const found = tokens.length ? search(searchField.value) : everywhere();
     if (!found.length) {
       if (tokens.length) {
         const nothing = document.createElement('div');

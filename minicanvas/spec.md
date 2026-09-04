@@ -711,7 +711,7 @@ live.
   theme decides what that looks like, not what it is.
 - A colour outside the six pens is drawn exactly as written. Hand-edit a scene to
   `#123456` and you get `#123456`, dark mode or not.
-- **Images are dimmed to 0.3 brightness on dark paper.** A photograph is the one
+- **Images are dimmed to 0.4 brightness on dark paper.** A photograph is the one
   thing on the canvas the theme cannot re-colour, and a lit window at full
   brightness on a dark page is the brightest thing in the room. The dim is a
   `--image-brightness` variable — not a colour, but read out of the stylesheet at
@@ -972,10 +972,13 @@ kept on purpose is worth more than a line you happened to write, and less than a
 whole document. Picking one does what picking it in the rail does — takes you
 there, selects nothing.
 
-**An empty box is not an empty answer.** With no query typed, the panel lists
-every pinned view in every document, most recent document first. A search box
-open on nothing is asking where you would like to go, and the places you kept are
-the page's own answer to that. Enter takes the top one.
+**An empty box is not an empty answer.** With no query typed, the panel lists every
+pinned view in every document and then every document itself, most recently opened
+first in each group. A search box open on nothing is asking where you would like to
+go, and those are the page's own answers to that. Views come first because they are
+the more particular one — a place inside a document rather than the whole of it —
+and because a document is one row away in the switcher regardless. Enter takes the
+top one.
 
 The index is a trie over each word and each of that word's suffixes, so `plan` and
 `ann` both reach *planning* without walking the corpus. Two things keep it small:
@@ -1217,8 +1220,10 @@ Deliberately absent, with the trigger that would justify adding each:
   the string, so the caret, the arrows, a click, and a selected run all work on
   what the reader sees rather than on newlines. An item with no `w` is unchanged,
   which is every file written until now.
-- Images draw at 0.3 brightness in dark mode, from a `--image-brightness` variable
+- Images draw at 0.4 brightness in dark mode, from a `--image-brightness` variable
   the renderer reads the way it reads the pens. Exports are untouched.
+- Search with an empty box lists the documents under the pinned views, rather than
+  the views alone.
 
 Fixed along the way: the document rows took the scene panel's `.row` class with
 them, and its top border drew a box around every one; and the toolbar showed the
