@@ -21,7 +21,7 @@
   /* Every colour is oklch, with a hex declared first so a browser older than oklch
      still gets the right thing: it drops the declaration it cannot parse and keeps
      the hex. Dark mode holds each hue and chroma and moves only the lightness, so
-     the palette reads as the same six pens either way. */
+     the palette reads as the same pens either way. */
   :root {
     --ink: #17171a;                          --ink: oklch(0.20 0.005 285);
     --chrome: #f6f6f4;                       --chrome: oklch(0.97 0.002 285);
@@ -35,14 +35,18 @@
     --marquee: #a8a8a4;                      --marquee: oklch(0.74 0.003 285);
     --marquee-fill: rgba(120,120,116,.12);   --marquee-fill: oklch(0.62 0.003 285 / 0.12);
     --shadow: rgba(0,0,0,.14);               --shadow: oklch(0 0 0 / 0.14);
-    /* The six pens. Stored files hold the light hex; the renderer looks the colour
-       up here at draw time, which is how a dark theme reaches inside the canvas. */
+    /* The pens. Stored files hold the light hex; the renderer looks the colour
+       up here at draw time, which is how a dark theme reaches inside the canvas.
+       White and gray stay put either way — they are for writing on top of things. */
     --pen-ink: #17171a;                      --pen-ink: oklch(0.20 0.005 285);
     --pen-red: #c0392b;                      --pen-red: oklch(0.53 0.17 27);
-    --pen-amber: #d98c1f;                    --pen-amber: oklch(0.70 0.14 68);
+    --pen-orange: #e0702a;                   --pen-orange: oklch(0.62 0.17 45);
+    --pen-gold: #d39a21;                     --pen-gold: oklch(0.72 0.14 82);
     --pen-green: #2e8b57;                    --pen-green: oklch(0.55 0.12 155);
     --pen-blue: #1f6feb;                     --pen-blue: oklch(0.56 0.19 258);
     --pen-violet: #6b4de6;                   --pen-violet: oklch(0.53 0.22 285);
+    --pen-gray: #8a8a86;                     --pen-gray: oklch(0.62 0.003 285);
+    --pen-white: #ffffff;                    --pen-white: oklch(1 0 0);
     /* Not a colour, but it travels the same road: a number the renderer reads out
        of the stylesheet at draw time, so the theme decides how bright a photograph
        burns on dark paper and the canvas code holds no opinion of its own. */
@@ -64,10 +68,13 @@
       --shadow: rgba(0,0,0,.5);                --shadow: oklch(0 0 0 / 0.5);
       --pen-ink: #ecebe7;                      --pen-ink: oklch(0.94 0.004 285);
       --pen-red: #ff8b7a;                      --pen-red: oklch(0.74 0.15 27);
-      --pen-amber: #e8b872;                    --pen-amber: oklch(0.82 0.12 68);
+      --pen-orange: #f0a070;                   --pen-orange: oklch(0.78 0.13 45);
+      --pen-gold: #f0c46e;                     --pen-gold: oklch(0.84 0.12 82);
       --pen-green: #74c79a;                    --pen-green: oklch(0.78 0.12 155);
       --pen-blue: #85b3ff;                     --pen-blue: oklch(0.76 0.14 258);
       --pen-violet: #b4a3ff;                   --pen-violet: oklch(0.76 0.15 285);
+      --pen-gray: #8a8a86;                     --pen-gray: oklch(0.62 0.003 285);
+      --pen-white: #ffffff;                    --pen-white: oklch(1 0 0);
       --image-brightness: 0.4;
     }
   }
@@ -424,10 +431,13 @@
   <span id="swatches">
     <button class="swatch" data-color="#17171a" style="background:var(--pen-ink)" aria-pressed="true" data-tip="Ink · C to cycle" aria-label="Ink"></button>
     <button class="swatch" data-color="#c0392b" style="background:var(--pen-red)" data-tip="Red · C to cycle" aria-label="Red"></button>
-    <button class="swatch" data-color="#d98c1f" style="background:var(--pen-amber)" data-tip="Amber · C to cycle" aria-label="Amber"></button>
+    <button class="swatch" data-color="#e0702a" style="background:var(--pen-orange)" data-tip="Orange · C to cycle" aria-label="Orange"></button>
+    <button class="swatch" data-color="#d39a21" style="background:var(--pen-gold)" data-tip="Gold · C to cycle" aria-label="Gold"></button>
     <button class="swatch" data-color="#2e8b57" style="background:var(--pen-green)" data-tip="Green · C to cycle" aria-label="Green"></button>
     <button class="swatch" data-color="#1f6feb" style="background:var(--pen-blue)" data-tip="Blue · C to cycle" aria-label="Blue"></button>
     <button class="swatch" data-color="#6b4de6" style="background:var(--pen-violet)" data-tip="Violet · C to cycle" aria-label="Violet"></button>
+    <button class="swatch" data-color="#8a8a86" style="background:var(--pen-gray)" data-tip="Gray · C to cycle" aria-label="Gray"></button>
+    <button class="swatch" data-color="#ffffff" style="background:var(--pen-white)" data-tip="White · C to cycle" aria-label="White"></button>
   </span>
 
   <!-- Anything with something selected. Layer order needs one item; alignment and
@@ -636,8 +646,9 @@ function createMiniCanvas(canvasElement, options) {
   // CSS cannot reach pixels drawn on a canvas, so the renderer reaches back out to
   // CSS instead: it asks the page what a variable currently resolves to.
   const PENS = core.PENS = {
-    '#17171a': '--pen-ink',   '#c0392b': '--pen-red',    '#d98c1f': '--pen-amber',
-    '#2e8b57': '--pen-green', '#1f6feb': '--pen-blue',   '#6b4de6': '--pen-violet'
+    '#17171a': '--pen-ink',   '#c0392b': '--pen-red',    '#e0702a': '--pen-orange',
+    '#d39a21': '--pen-gold',  '#2e8b57': '--pen-green',  '#1f6feb': '--pen-blue',
+    '#6b4de6': '--pen-violet','#8a8a86': '--pen-gray',   '#ffffff': '--pen-white'
   };
   let themeColors = new Map();
   core.exporting = false;   // exports carry the document's own colours
