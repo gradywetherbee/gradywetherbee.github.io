@@ -154,6 +154,19 @@
   }
   #tip.here { opacity: 1; }
 
+  /* Storage refusing a write is the one failure the page cannot quietly absorb.
+     Everything drawn is still on screen, so nothing looks wrong, while none of it
+     is being kept. It sits above the toolbar and stays up until a write succeeds. */
+  #storage-warning {
+    position: fixed; z-index: 5; bottom: 68px; left: 12px; right: 12px;
+    margin: 0 auto; width: fit-content; max-width: min(460px, calc(100vw - 24px));
+    padding: 8px 12px; border-radius: 8px;
+    background: var(--pen-red); color: var(--surface);
+    font-size: 12px; line-height: 1.45; text-align: center;
+    box-shadow: 0 6px 24px var(--shadow);
+  }
+  #storage-warning[hidden] { display: none; }
+
   /* A group is only a wrapper for showing and hiding: display:contents keeps its
      buttons as direct flex children of the bar, so grouping changes nothing about
      the layout until something is hidden. */
@@ -500,6 +513,10 @@
 </div>
 
 <div id="tip"></div>
+
+<!-- Above the toolbar rather than in a corner: a drawing that is no longer being
+     kept is worth interrupting for, and the corners are already spoken for. -->
+<div id="storage-warning" role="alert" hidden></div>
 
 <div id="download-menu" hidden>
   <button id="png"><svg class="icon" aria-hidden="true"><use href="#i-file_png"></use></svg> PNG</button>
@@ -3314,7 +3331,32 @@ createMiniCanvas.plugin('export', [], function (core) {
   const freshId = () => 'd' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
   const EMPTY = '{"format":"minicanvas/1","items":[]}';
   const read = (key) => { try { return store && store.getItem(key); } catch (error) { return null; } };
-  const write = (key, value) => { try { if (store) store.setItem(key, value); } catch (error) { /* full, or refused */ } };
+
+  // Whether the last write got through, and the notice that says so when it did
+  // not. Swallowing the failure is what makes it dangerous: the scene stays on
+  // screen exactly as it was, so a full store looks identical to a saved one until
+  // the page is reopened and the work is gone. Nothing is said twice, and the
+  // notice takes itself down the moment a write succeeds again — deleting a pasted
+  // image is usually all it takes, and that should not need explaining.
+  let storageWorks = true;
+  function storageSays(working, why) {
+    if (working === storageWorks) return working;
+    storageWorks = working;
+    const notice = document.getElementById('storage-warning');
+    if (!notice) return working;   // embedded somewhere without the demo's chrome
+    notice.hidden = working;
+    notice.textContent = working ? '' : why + ' Use Download → JSON to keep this drawing.';
+    return working;
+  }
+
+  const write = (key, value) => {
+    if (!store) return storageSays(false, 'This browser will not let the page store anything, so nothing is being saved.');
+    // Full, nearly always because images are kept in the scene itself as data
+    // URIs, and a couple of pasted screenshots is a browser's whole allowance.
+    try { store.setItem(key, value); }
+    catch (error) { return storageSays(false, 'Storage is full, so nothing is being saved.'); }
+    return storageSays(true);
+  };
   const docText = (id) => read(docKey(id));
 
   // Whether this browser has ever had a document here, read before the migration
@@ -3452,8 +3494,10 @@ createMiniCanvas.plugin('export', [], function (core) {
   function save() {
     const text = board.toText();
     if (text === lastSaved) return;   // nothing changed since the last write
-    lastSaved = text;
-    write(docKey(currentId), text);
+    // Only a write that got through counts as saved. Leaving lastSaved where it
+    // was means the next pointerup tries the same text again, so deleting whatever
+    // filled the store is enough for everything drawn since to be written after all.
+    if (write(docKey(currentId), text)) lastSaved = text;
     stale = true;                     // the search index is now one edit behind
     paintDocName();                   // an unnamed document is named by its first line
     if (!scenePanel.hidden) dump();   // keep the panel honest, but never fight a typist
@@ -3491,8 +3535,9 @@ createMiniCanvas.plugin('export', [], function (core) {
     const at = (selector) => page.querySelector(selector);
     // Whatever the chrome happened to be doing when the button was pressed is not
     // part of the document, so it all goes back the way the source file has it.
-    ['#doc-panel', '#search-panel', '#scene-panel', '#download-menu']
+    ['#doc-panel', '#search-panel', '#scene-panel', '#download-menu', '#storage-warning']
       .forEach((selector) => at(selector).setAttribute('hidden', ''));
+    at('#storage-warning').textContent = '';   // this machine's trouble, not the document's
     at('#doc-list').textContent = '';
     at('#search-list').textContent = '';
     // The board's own layers are a rendering of the scene, not part of the page.
