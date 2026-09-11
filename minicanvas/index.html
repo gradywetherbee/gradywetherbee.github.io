@@ -3337,22 +3337,80 @@ createMiniCanvas.plugin('export', [], function (core) {
 
 <script>
 /* Demo wiring. None of this belongs to the primitive; delete it when embedding. */
-(function () {
+(async function () {
   // Whatever was drawn last time, or the scene baked into the page the first time.
-  // A page can hold several documents, so the scenes are kept one to a key with a
-  // short index listing them. Names are in the index and nowhere else, so reading
+  // A page can hold several documents, so the scenes are kept one to a record with
+  // a short index listing them. Names are in the index and nowhere else, so reading
   // the list costs one small read rather than parsing every scene on the page.
-  const DOCS_KEY = 'minicanvas-demo-docs';
-  const OLD_KEY = 'minicanvas-demo-scene';   // what the one-document version wrote
-  const docKey = (id) => 'minicanvas-demo-doc:' + id;
-  const store = (() => {
-    try { window.localStorage.getItem(DOCS_KEY); return window.localStorage; }
-    catch (error) { return null; }   // private mode, a sandboxed frame, or no storage at all
-  })();
+  //
+  // IndexedDB rather than localStorage, and pictures kept apart from the drawings
+  // that use them. A pasted screenshot is a megabyte of base64 and a drag is two
+  // numbers: stored together, every drag rewrites the screenshot, and two
+  // screenshots is a whole localStorage allowance. So a stored scene holds
+  // `asset:<id>` where a picture goes, the picture is written once under that id,
+  // and moving it rewrites the scene alone. The pictures go back in on the way out
+  // — a downloaded JSON file carries its own images and opens anywhere — and come
+  // back out again on the way in, which is the only place either conversion
+  // happens. Everything between the two is the page exactly as it was.
+  const DB_NAME = 'minicanvas';
+  const STORES = ['meta', 'docs', 'assets'];
+  const OLD_DOCS = 'minicanvas-demo-docs';       // what the localStorage version wrote
+  const OLD_DOC = 'minicanvas-demo-doc:';
+  const OLD_UI = 'minicanvas-demo-toolbar';
+  const OLD_SCENE = 'minicanvas-demo-scene';     // and the one-document version before it
 
-  const freshId = () => 'd' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  const freshId = (prefix) => (prefix || 'd') + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
   const EMPTY = '{"format":"minicanvas/1","items":[]}';
-  const read = (key) => { try { return store && store.getItem(key); } catch (error) { return null; } };
+  const REF = 'asset:';
+
+  const db = await new Promise((resolve) => {
+    let request;
+    try { request = window.indexedDB.open(DB_NAME, 1); }
+    catch (error) { resolve(null); return; }   // a sandboxed frame, or no storage at all
+    request.onupgradeneeded = () => {
+      for (const name of STORES) {
+        if (!request.result.objectStoreNames.contains(name)) request.result.createObjectStore(name);
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = request.onblocked = () => resolve(null);
+  });
+
+  // One request, one transaction, one promise. Every read here is a record or a
+  // handful, so batching them would buy nothing worth the machinery it costs.
+  function ask(store, mode, act) {
+    return new Promise((resolve, reject) => {
+      if (!db) { reject(new Error('no storage')); return; }
+      let request;
+      try { request = act(db.transaction(store, mode).objectStore(store)); }
+      catch (error) { reject(error); return; }
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+  }
+  const get = (store, key) => ask(store, 'readonly', (shelf) => shelf.get(key));
+  const drop = (store, key) => ask(store, 'readwrite', (shelf) => shelf.delete(key));
+
+  // Except this one, which is the page's whole opening read. Asking for each
+  // document by name would be a transaction apiece, and a hundred documents would
+  // be waiting on a hundred round trips rather than on any of the reading. Both
+  // requests share one transaction and both come back in key order, so they line
+  // up pair for pair.
+  function allDocs() {
+    return new Promise((resolve, reject) => {
+      if (!db) { reject(new Error('no storage')); return; }
+      let transaction;
+      try { transaction = db.transaction('docs', 'readonly'); }
+      catch (error) { reject(error); return; }
+      const shelf = transaction.objectStore('docs');
+      let ids = [];
+      let texts = [];
+      shelf.getAllKeys().onsuccess = (event) => { ids = event.target.result || []; };
+      shelf.getAll().onsuccess = (event) => { texts = event.target.result || []; };
+      transaction.oncomplete = () => resolve(new Map(ids.map((id, at) => [id, texts[at]])));
+      transaction.onerror = transaction.onabort = () => reject(transaction.error);
+    });
+  }
 
   // Whether the last write got through, and the notice that says so when it did
   // not. Swallowing the failure is what makes it dangerous: the scene stays on
@@ -3361,6 +3419,7 @@ createMiniCanvas.plugin('export', [], function (core) {
   // notice takes itself down the moment a write succeeds again — deleting a pasted
   // image is usually all it takes, and that should not need explaining.
   let storageWorks = true;
+  let lastSaved = null;   // the text the open document was last written with
   function storageSays(working, why) {
     if (working === storageWorks) return working;
     storageWorks = working;
@@ -3371,34 +3430,170 @@ createMiniCanvas.plugin('export', [], function (core) {
     return working;
   }
 
-  const write = (key, value) => {
-    if (!store) return storageSays(false, 'This browser will not let the page store anything, so nothing is being saved.');
-    // Full, nearly always because images are kept in the scene itself as data
-    // URIs, and a couple of pasted screenshots is a browser's whole allowance.
-    try { store.setItem(key, value); }
-    catch (error) { return storageSays(false, 'Storage is full, so nothing is being saved.'); }
-    return storageSays(true);
-  };
-  const docText = (id) => read(docKey(id));
+  // The index and the documents are small enough to keep in hand now that the
+  // pictures are not in them, so reading a document stays a lookup and only the
+  // writing goes to the database. That is what lets the rest of the page carry on
+  // being written the way it was.
+  const memory = new Map();   // document id -> stored text, pictures still by reference
+  const docText = (id) => memory.has(id) ? memory.get(id) : null;
 
-  // Whether this browser has ever had a document here, read before the migration
-  // below takes the old key away. An exported page arriving somewhere brand new
-  // has no use for the empty document a first run would otherwise invent.
-  const startedEmpty = !read(DOCS_KEY) && !read(OLD_KEY);
+  // The answer is about the write before this one: an IndexedDB write finishes
+  // after the edit that caused it. Forgetting what was last saved on a failure is
+  // what makes the next edit try the whole document again, so freeing some room
+  // and carrying on is enough to get everything drawn since written after all.
+  function write(store, key, value) {
+    if (store === 'docs') memory.set(key, value);
+    ask(store, 'readwrite', (shelf) => shelf.put(value, key)).then(
+      () => storageSays(true),
+      () => {
+        lastSaved = null;
+        storageSays(false, db
+          ? 'Storage is full, so nothing is being saved.'
+          : 'This browser will not let the page store anything, so nothing is being saved.');
+      });
+    return storageWorks;
+  }
+
+  // Pictures by id, and the same pictures by their own bytes, so that pasting one
+  // twice writes it once. Kept as the data URI the canvas already draws from: a
+  // Blob would be a third smaller and a FileReader at both ends, and the ceiling
+  // that mattered here was localStorage's, not this one's.
+  // ponytail: data URIs in the store too. Blobs if the quota ever bites.
+  const assets = new Map();     // asset id -> data URI
+  const assetIds = new Map();   // data URI -> asset id
+  function assetRef(src) {
+    let id = assetIds.get(src);
+    if (!id) {
+      id = freshId('a');
+      assets.set(id, src);
+      assetIds.set(src, id);
+      write('assets', id, src);
+    }
+    return REF + id;
+  }
+
+  // On the way in a picture becomes a reference. Anything that is not a data URI
+  // is left alone: a relative path or a link is already a reference, and shorter
+  // than the one this would give it.
+  function deflated(text) {
+    let scene;
+    try { scene = JSON.parse(text); } catch (error) { return text; }
+    for (const item of (scene.items || [])) {
+      if (item.type === 'image' && typeof item.src === 'string' && item.src.slice(0, 5) === 'data:') {
+        item.src = assetRef(item.src);
+      }
+    }
+    return JSON.stringify(scene);
+  }
+
+  // And on the way out it becomes itself again — but only the pictures this
+  // document actually uses, and only the ones not already in hand. The rest stay
+  // on disk until the document that wants them is opened. A picture that has gone
+  // missing leaves its reference in place: an item with no src draws nothing, and
+  // an empty frame says something was there better than a silent deletion would.
+  async function inflated(text) {
+    let scene;
+    try { scene = JSON.parse(text); } catch (error) { return text; }
+    for (const item of (scene.items || [])) {
+      if (item.type !== 'image' || String(item.src || '').slice(0, 6) !== REF) continue;
+      const id = item.src.slice(6);
+      if (!assets.has(id)) {
+        try {
+          const src = await get('assets', id);
+          if (typeof src === 'string') { assets.set(id, src); assetIds.set(src, id); }
+        } catch (error) { /* unreadable is missing, and missing draws nothing */ }
+      }
+      item.src = assets.get(id) || item.src;
+    }
+    return JSON.stringify(scene);
+  }
+
+  // A picture belongs to whoever is still using it, so deleting a document leaves
+  // its pictures behind. Anything nothing points at any more goes with it, which
+  // is a scan of every document — cheap now that none of them hold a picture.
+  async function sweepAssets() {
+    const kept = new Set();
+    for (const text of memory.values()) {
+      let scene;
+      try { scene = JSON.parse(text); } catch (error) { continue; }
+      for (const item of (scene.items || [])) {
+        if (item.type === 'image' && String(item.src || '').slice(0, 6) === REF) kept.add(item.src.slice(6));
+      }
+    }
+    let ids = [];
+    try { ids = await ask('assets', 'readonly', (shelf) => shelf.getAllKeys()); } catch (error) { return; }
+    for (const id of ids) {
+      if (kept.has(id)) continue;
+      const src = assets.get(id);
+      if (src !== undefined) { assetIds.delete(src); assets.delete(id); }
+      drop('assets', id);
+    }
+  }
+
+  // What the localStorage version left behind, read once and taken rather than
+  // borrowed: leaving it there would have a later first run import a copy of work
+  // that has moved on without it.
+  const old = (() => {
+    try { window.localStorage.getItem(OLD_DOCS); return window.localStorage; }
+    catch (error) { return null; }   // private mode, a sandboxed frame, or no storage at all
+  })();
+  const oldRead = (key) => { try { return old && old.getItem(key); } catch (error) { return null; } };
+  const oldDrop = (key) => { try { if (old) old.removeItem(key); } catch (error) { /* nothing to clear */ } };
 
   // `name` is null until someone types one, and an unnamed document is called after
   // its own first line of text. A list of six things called Untitled is not a list.
-  const docs = (() => {
-    let index = null;
-    try { index = JSON.parse(read(DOCS_KEY) || 'null'); } catch (error) { index = null; }
-    if (index && Array.isArray(index.list) && index.list.length) return index;
-    // First run, or a page saved before there were documents: whatever sat under
-    // the old single-scene key becomes document one rather than being stranded.
-    const id = freshId();
-    const carried = read(OLD_KEY);
-    if (carried) { write(docKey(id), carried); try { store.removeItem(OLD_KEY); } catch (error) { /* nothing to clear */ } }
-    return { current: id, list: [{ id: id, name: null }] };
-  })();
+  let docs = null;
+  try { docs = await get('meta', 'index'); } catch (error) { docs = null; }
+  if (!docs || !Array.isArray(docs.list) || !docs.list.length) docs = null;
+  if (docs) {
+    let kept = new Map();
+    try { kept = await allDocs(); } catch (error) { /* unreadable is empty, not dead */ }
+    // Taken from the index rather than from the store, so a record the index has
+    // forgotten stays forgotten instead of reappearing as a document nobody made.
+    for (const doc of docs.list) {
+      const text = kept.get(doc.id);
+      if (typeof text === 'string') memory.set(doc.id, text);
+    }
+  }
+
+  // Whether this browser has ever had a document anywhere, read before the
+  // migration below takes the old keys away. An exported page arriving somewhere
+  // brand new has no use for the empty document a first run would otherwise invent.
+  const startedEmpty = !docs && !oldRead(OLD_DOCS) && !oldRead(OLD_SCENE);
+
+  if (!docs) {
+    let carried = null;
+    try { carried = JSON.parse(oldRead(OLD_DOCS) || 'null'); } catch (error) { carried = null; }
+    if (carried && Array.isArray(carried.list) && carried.list.length) {
+      // Everything the last version kept, coming across with its pictures split
+      // out, which is the whole point of the move.
+      docs = carried;
+      for (const doc of docs.list) {
+        const text = oldRead(OLD_DOC + doc.id);
+        if (text) write('docs', doc.id, deflated(text));
+        oldDrop(OLD_DOC + doc.id);
+      }
+    } else {
+      // A first run, or a page saved before there were documents: whatever sat
+      // under the old single-scene key becomes document one rather than being
+      // stranded.
+      const id = freshId();
+      docs = { current: id, list: [{ id: id, name: null }] };
+      const single = oldRead(OLD_SCENE);
+      if (single) write('docs', id, deflated(single));
+    }
+    oldDrop(OLD_DOCS);
+    oldDrop(OLD_SCENE);
+  }
+
+  // How the page was left, which moves across the same way and for the same reason.
+  let ui = null;
+  try { ui = await get('meta', 'ui'); } catch (error) { ui = null; }
+  if (!ui) {
+    try { ui = JSON.parse(oldRead(OLD_UI) || 'null'); } catch (error) { ui = null; }
+    if (ui) write('meta', 'ui', ui);
+    oldDrop(OLD_UI);
+  }
 
   // A page exported with a document baked into it carries that document's id. A
   // copy landing on a machine that already has documents of its own adds one
@@ -3419,12 +3614,12 @@ createMiniCanvas.plugin('export', [], function (core) {
   if (shared && !docs.list.some((doc) => doc.id === shared)) {
     if (startedEmpty) docs.list.length = 0;   // nothing was in it and nothing put it there
     docs.list.push({ id: shared, name: sceneBlock.getAttribute('data-name') || null, used: Date.now(), views: sharedViews() });
-    write(docKey(shared), sceneBlock.textContent.trim());
+    write('docs', shared, deflated(sceneBlock.textContent.trim()));
     docs.current = shared;
   }
 
   let currentId = docs.list.some((doc) => doc.id === docs.current) ? docs.current : docs.list[0].id;
-  const saveDocs = () => write(DOCS_KEY, JSON.stringify(docs));
+  const saveDocs = () => write('meta', 'index', docs);
   // The list is ordered by when you were last in a document, so the one you want
   // next is usually the one on top. Opening one stamps it; anything from before
   // there were stamps sorts to the bottom in the order it was written.
@@ -3433,8 +3628,11 @@ createMiniCanvas.plugin('export', [], function (core) {
   const byRecent = () => docs.list.slice().sort((a, b) => (b.used || 0) - (a.used || 0));
   saveDocs();   // a first run, or a migration, is written down before anything is drawn
 
+  const stored = docText(currentId);
   const board = MiniCanvas.mount('#board', {
-    scene: docText(currentId) || '#scene',   // every feature on the page is loaded by default
+    // Every feature on the page is loaded by default. The scene arrives with its
+    // pictures put back, so nothing past this line knows they were ever apart.
+    scene: stored ? await inflated(stored) : '#scene',
     tool: 'draw'                             // which is what the toolbar starts out saying
   });
 
@@ -3516,19 +3714,19 @@ createMiniCanvas.plugin('export', [], function (core) {
   //
   // So: save after anything that could have finished an edit, and compare the text
   // before writing, which makes the extra calls free when nothing actually moved.
-  let lastSaved = board.toText();
+  lastSaved = board.toText();
   // The scene the page mounted with belongs to the open document even if nobody
-  // has drawn on it yet. Without this first write it has no key of its own, and
+  // has drawn on it yet. Without this first write it has no record of its own, and
   // the welcome scene would vanish the first time you switched away from it.
-  if (!docText(currentId)) write(docKey(currentId), lastSaved);
+  if (!docText(currentId)) write('docs', currentId, deflated(lastSaved));
 
   function save() {
     const text = board.toText();
     if (text === lastSaved) return;   // nothing changed since the last write
-    // Only a write that got through counts as saved. Leaving lastSaved where it
-    // was means the next pointerup tries the same text again, so deleting whatever
-    // filled the store is enough for everything drawn since to be written after all.
-    if (write(docKey(currentId), text)) lastSaved = text;
+    // Compared before the pictures come out, so a document that has not changed
+    // costs one string and no parse. What gets written is the drawing alone:
+    // dragging a photograph across the page rewrites two numbers, not a megabyte.
+    if (write('docs', currentId, deflated(text))) lastSaved = text;
     stale = true;                     // the search index is now one edit behind
     paintDocName();                   // an unnamed document is named by its first line
     if (!scenePanel.hidden) dump();   // keep the panel honest, but never fight a typist
@@ -3540,6 +3738,10 @@ createMiniCanvas.plugin('export', [], function (core) {
   window.addEventListener('pointerup', save);
   window.addEventListener('keyup', save);            // a keystroke landed
   window.addEventListener('blur', save);             // leaving the page
+  // ponytail: the write is handed over here rather than finished here, since an
+  // IndexedDB transaction is not a localStorage assignment. Browsers do let one
+  // already in flight run to completion, and every pointerup and keystroke above
+  // has already saved, so this is the last resort it always was.
   window.addEventListener('beforeunload', save);
   function download(blob, name) {
     const link = document.createElement('a');
@@ -3775,16 +3977,16 @@ createMiniCanvas.plugin('export', [], function (core) {
 
   function paintDocName() { docLabel.textContent = titleOf(docById(currentId)); }
 
-  function loadCurrent() {
-    try { board.load(docText(currentId) || EMPTY); }
-    catch (error) { board.load(EMPTY); }   // a corrupt key is an empty page, not a dead one
+  async function loadCurrent() {
+    try { board.load(await inflated(docText(currentId) || EMPTY)); }
+    catch (error) { board.load(EMPTY); }   // a corrupt record is an empty page, not a dead one
     lastSaved = board.toText();
     paintDocName();
     paintPins();     // the dashes belong to the document, so they change with it
     dump();
   }
 
-  function openDoc(id) {
+  async function openDoc(id) {
     showDocs(false);
     const doc = docById(id);
     if (doc) doc.used = Date.now();
@@ -3792,22 +3994,25 @@ createMiniCanvas.plugin('export', [], function (core) {
     save();                       // what is on screen belongs to the document it came from
     currentId = docs.current = id;
     saveDocs();
-    loadCurrent();
+    await loadCurrent();
   }
 
-  function dropDoc(id) {
+  async function dropDoc(id) {
     const doc = docById(id);
     if (!doc || docs.list.length < 2) return;   // there is always one document
     if (!window.confirm('Delete "' + titleOf(doc) + '"? This cannot be undone.')) return;
+    save();                       // before the sweep below reads what is still in use
     docs.list = docs.list.filter((entry) => entry.id !== id);
-    try { if (store) store.removeItem(docKey(id)); } catch (error) { /* already gone */ }
+    memory.delete(id);
+    drop('docs', id).catch(() => { /* already gone */ });
     stale = true;
     if (id === currentId) {
       currentId = docs.current = byRecent()[0].id;   // whatever you were in most recently
-      loadCurrent();
+      await loadCurrent();
     }
     saveDocs();
     paintDocs();
+    sweepAssets();   // its pictures go too, unless another document kept one
   }
 
   // The same markup the static buttons have, pointing at the same sprite.
@@ -3880,7 +4085,7 @@ createMiniCanvas.plugin('export', [], function (core) {
     editName(row, '', (name) => {
       const doc = { id: freshId(), name: name, used: Date.now() };
       docs.list.push(doc);
-      write(docKey(doc.id), EMPTY);
+      write('docs', doc.id, EMPTY);
       stale = true;
       openDoc(doc.id);              // which closes the panel and saves the index
     }, paintDocs);
@@ -4022,8 +4227,8 @@ createMiniCanvas.plugin('export', [], function (core) {
 
   // Takes you there and selects nothing. A pinned view is a place, and arriving
   // somewhere is not the same as picking up what you find.
-  function goToView(view, docId) {
-    if (docId && docId !== currentId) openDoc(docId);
+  async function goToView(view, docId) {
+    if (docId && docId !== currentId) await openDoc(docId);
     const camera = board.scene().view;
     camera.scale = view.scale || 1;
     camera.x = view.x - board.core.canvas.clientWidth / 2 / camera.scale;
@@ -4243,11 +4448,11 @@ createMiniCanvas.plugin('export', [], function (core) {
     board.redraw();
   }
 
-  function go(entry) {
+  async function go(entry) {
     showSearch(false);
-    if (entry.docId !== currentId) openDoc(entry.docId);
+    if (entry.docId !== currentId) await openDoc(entry.docId);
     if (entry.kind === 'text') focusItem(entry.at);
-    if (entry.kind === 'view') goToView(entry.view, entry.docId);
+    if (entry.kind === 'view') await goToView(entry.view, entry.docId);
   }
 
   // An empty box is not an empty answer. Every pinned view in every document is
@@ -4489,25 +4694,18 @@ createMiniCanvas.plugin('export', [], function (core) {
   // Which tool, which pen, and what the chrome looked like. Kept under its own key:
   // this is how the page was left, not what was drawn, and the two are worth being
   // able to clear apart from each other.
-  const UI_KEY = 'minicanvas-demo-toolbar';
-
   function saveToolbar() {
-    if (!store) return;
     const pen = board.pen();
-    try {
-      store.setItem(UI_KEY, JSON.stringify({
-        tool: board.tool(),
-        color: pen.color, width: pen.width, opacity: pen.opacity, fill: pen.fill,
-        toolbar: !toolbar.classList.contains('away'),
-        panel: !scenePanel.hidden
-      }));
-    } catch (error) { /* full, or refused */ }
+    write('meta', 'ui', {
+      tool: board.tool(),
+      color: pen.color, width: pen.width, opacity: pen.opacity, fill: pen.fill,
+      toolbar: !toolbar.classList.contains('away'),
+      panel: !scenePanel.hidden
+    });
   }
 
   function restoreToolbar() {
-    let state = null;
-    try { state = JSON.parse((store && store.getItem(UI_KEY)) || 'null'); }
-    catch (error) { state = null; }   // whatever is in there, it is not ours
+    const state = ui;   // read at the top, with everything else this page opens with
     if (!state) return;
     // Opacity and fill have no setter of their own, so they go on directly and
     // setStroke does the announcing for all four at once.
