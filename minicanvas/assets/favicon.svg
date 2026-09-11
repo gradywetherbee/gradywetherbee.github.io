@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="minicanvas">
+  <!-- The app's own icon: the ink pen from the toolbar, in the colour the toolbar
+       draws it, on white paper with the corners taken off. The glyph is the Material
+       Symbols Outlined `ink_pen` path (Apache License 2.0), the same one the canvas
+       sprite carries, so the tab and the tool cannot drift apart.
+
+       The transform fits the *path's own* box rather than Material's grid. The grid
+       is 960 square and the pen only occupies 720 of it, at (120, -840) — a quarter
+       of that box is padding Material drew in. Scaling the grid therefore scales the
+       padding too, which is what kept the pen looking small however much the grid
+       grew. So: 720 → 432 at an exact 0.6, leaving 40 of white on every side, and the
+       translate puts the path's box corner at (40, 40) rather than the grid's.
+
+       The corner radius came down from 104 to 88 to go with it. A pen this large
+       runs corner to corner, and at 104 its nib and its tip grazed the arc — a
+       rounding that cuts into the ink reads as a mistake rather than as a shape.
+
+       A tab favicon is 16 pixels wide and the glyph has to carry it at that size, so
+       it takes very nearly all the paper. The home-screen rasters are rendered from
+       this file at 80% and centred, since Android masks a maskable icon down to
+       roughly its middle 80% and would take the ends off a pen drawn this large.
+       See assets/README.md. -->
+  <rect width="512" height="512" rx="88" ry="88" fill="#ffffff"/>
+  <g transform="translate(-32 544) scale(0.6)">
+    <path fill="#17171a" d="m490-527 37 37 217-217-37-37-217 217ZM200-200h37l233-233-37-37-233 233v37Zm355-205L405-555l167-167-29-29-219 219-56-56 218-219q24-24 56.5-24t56.5 24l29 29 50-50q12-12 28.5-12t28.5 12l93 93q12 12 12 28.5T828-678L555-405ZM270-120H120v-150l285-285 150 150-285 285Z"/>
+  </g>
+</svg>
